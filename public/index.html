@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>予約管理システム</title>
+  <link rel="stylesheet" href="/style.css">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+</head>
+<body>
+
+<div class="app">
+
+  <!-- Sidebar overlay (mobile tap-to-close) -->
+  <div class="sidebar-overlay" id="sidebarOverlay" onclick="closeSidebar()"></div>
+
+  <!-- ═══ SIDEBAR ═══════════════════════════════════════ -->
+  <aside class="sidebar" id="sidebar">
+    <div class="sidebar-brand">
+      <div class="brand-logo">💼</div>
+      <div>
+        <div class="brand-name">予約管理</div>
+        <div class="brand-sub">Management System</div>
+      </div>
+    </div>
+
+    <nav class="sidebar-nav">
+      <div class="nav-section-label">メニュー</div>
+      <button class="nav-item active" data-page="dashboard" onclick="navigate('dashboard')">
+        <span class="nav-icon">🏠</span><span>ダッシュボード</span>
+      </button>
+      <button class="nav-item" data-page="bookings" onclick="navigate('bookings')">
+        <span class="nav-icon">📅</span><span>予約一覧</span>
+      </button>
+      <button class="nav-item" data-page="register" onclick="navigate('register')">
+        <span class="nav-icon">✏️</span><span>新規登録</span>
+      </button>
+      <div class="nav-section-label">データ</div>
+      <button class="nav-item" data-page="customers" onclick="navigate('customers')">
+        <span class="nav-icon">👥</span><span>お客様一覧</span>
+      </button>
+      <button class="nav-item" data-page="stats" onclick="navigate('stats')">
+        <span class="nav-icon">📊</span><span>集計・分析</span>
+      </button>
+      <div class="nav-section-label">設定</div>
+      <button class="nav-item" onclick="openOperatorManager()">
+        <span class="nav-icon">👤</span><span>担当者管理</span>
+      </button>
+    </nav>
+
+    <div class="sidebar-footer">予約管理システム v2.0</div>
+  </aside>
+
+  <!-- ═══ MAIN ═══════════════════════════════════════════ -->
+  <div class="main">
+
+    <header class="topbar">
+      <button class="hamburger" id="hamburger" onclick="toggleSidebar()">
+        <span></span><span></span><span></span>
+      </button>
+      <div class="topbar-title" id="topbarTitle">ダッシュボード</div>
+      <div class="topbar-right">
+        <button class="theme-toggle" id="themeToggle" onclick="toggleTheme()" title="テーマ切替">🌙</button>
+        <button class="btn btn-primary btn-sm" onclick="navigate('register')">＋ 新規登録</button>
+      </div>
+    </header>
+
+    <div class="content" id="content">
+      <div class="loading-wrap"><div class="spinner"></div></div>
+    </div>
+
+  </div>
+</div>
+
+<!-- ═══ MODAL ═══════════════════════════════════════════ -->
+<div class="modal-backdrop" id="modalBackdrop" onclick="closeModal()">
+  <div class="modal-panel" id="modalPanel" onclick="event.stopPropagation()">
+    <div class="modal-head">
+      <h2 class="modal-title" id="modalTitle">—</h2>
+      <button class="modal-close" onclick="closeModal()">✕</button>
+    </div>
+    <div class="modal-body" id="modalBody"></div>
+  </div>
+</div>
+
+<!-- ═══ TOAST ═══════════════════════════════════════════ -->
+<div class="toast" id="toast"></div>
+
+<!-- ═══ MOBILE NAV ════════════════════════════════════════ -->
+<nav class="mobile-nav">
+  <button class="mnav-item active" data-page="dashboard" onclick="navigate('dashboard')">
+    <span>🏠</span><span>ホーム</span>
+  </button>
+  <button class="mnav-item" data-page="bookings" onclick="navigate('bookings')">
+    <span>📅</span><span>予約</span>
+  </button>
+  <button class="mnav-item" data-page="register" onclick="navigate('register')">
+    <span>✏️</span><span>登録</span>
+  </button>
+  <button class="mnav-item" data-page="customers" onclick="navigate('customers')">
+    <span>👥</span><span>お客様</span>
+  </button>
+  <button class="mnav-item" data-page="stats" onclick="navigate('stats')">
+    <span>📊</span><span>集計</span>
+  </button>
+</nav>
+
+<script src="/app.js"></script>
+</body>
+</html>

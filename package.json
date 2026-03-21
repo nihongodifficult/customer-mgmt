@@ -1,0 +1,19 @@
+{
+  "name": "yoyaku-kanri",
+  "version": "2.0.0",
+  "description": "予約管理システム",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "nodemon server.js",
+    "migrate": "node migrate.js"
+  },
+  "dependencies": {
+    "dotenv": "^16.4.5",
+    "express": "^4.18.2",
+    "pg": "^8.11.3"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.3"
+  }
+}
