@@ -40,6 +40,31 @@ async function initDB() {
   await pool.query(`
     ALTER TABLE bookings ADD COLUMN IF NOT EXISTS account_name TEXT NOT NULL DEFAULT '';
   `);
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS operators (
+      id         SERIAL PRIMARY KEY,
+      name       TEXT NOT NULL UNIQUE,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+  `);
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS companies (
+      id         SERIAL PRIMARY KEY,
+      name       TEXT NOT NULL UNIQUE,
+      color      TEXT NOT NULL DEFAULT '#7c3aed',
+      address    TEXT NOT NULL DEFAULT '',
+      phone      TEXT NOT NULL DEFAULT '',
+      notes      TEXT NOT NULL DEFAULT '',
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+    CREATE TABLE IF NOT EXISTS stores (
+      id         SERIAL PRIMARY KEY,
+      name       TEXT NOT NULL UNIQUE,
+      color      TEXT NOT NULL DEFAULT '#94a3b8',
+      company_id INTEGER REFERENCES companies(id),
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+  `);
   console.log('[DB] テーブル確認 OK');
 }
 
@@ -105,18 +130,36 @@ async function deleteBooking(id) {
   await pool.query('DELETE FROM bookings WHERE id=$1', [id]);
 }
 
-async function getBookings(year, month) {
+function _storeWhere(companyId, branch) {
+  // Returns { cond, params } to append to an existing WHERE clause
+  const cid = parseInt(companyId) || 0;
+  const br  = branch || '';
+  if (br)  return { cond: `AND store_name = $~`,                                                       params: [br] };
+  if (cid) return { cond: `AND store_name IN (SELECT name FROM stores WHERE company_id = $~)`,         params: [cid] };
+  return { cond: '', params: [] };
+}
+
+function _buildQuery(base, paramsBefore, sw) {
+  // Replace $~ placeholders with correct $N indices
+  let params = [...paramsBefore, ...sw.params];
+  let cond = sw.cond;
+  let offset = paramsBefore.length + 1;
+  cond = cond.replace(/\$~/g, () => `$${offset++}`);
+  return { sql: base + ' ' + cond, params };
+}
+
+async function getBookings(year, month, companyId, branch) {
+  const sw = _storeWhere(companyId, branch);
   if (year && month) {
-    const { rows } = await pool.query(
-      `SELECT * FROM bookings WHERE booking_date LIKE $1
-       ORDER BY booking_date DESC, booking_time DESC`,
-      [`${_prefix(year, month)}%`]
+    const { sql, params } = _buildQuery(
+      `SELECT * FROM bookings WHERE contract_date LIKE $1`,
+      [`${_prefix(year, month)}%`], sw
     );
+    const { rows } = await pool.query(sql + ' ORDER BY contract_date DESC, booking_time DESC', params);
     return rows;
   }
-  const { rows } = await pool.query(
-    `SELECT * FROM bookings ORDER BY booking_date DESC, booking_time DESC`
-  );
+  const { sql, params } = _buildQuery(`SELECT * FROM bookings WHERE 1=1`, [], sw);
+  const { rows } = await pool.query(sql + ' ORDER BY contract_date DESC, booking_time DESC', params);
   return rows;
 }
 
@@ -126,19 +169,24 @@ async function getBookingById(id) {
 }
 
 // ─── DASHBOARD ───────────────────────────────────────────
-async function getDashboard(year, month) {
+async function getDashboard(year, month, companyId, branch) {
   const prefix = `${_prefix(year, month)}%`;
   const today  = new Date().toLocaleDateString('sv-SE');
+  const sw     = _storeWhere(companyId, branch);
+
+  const build = (base, before) => _buildQuery(base, before, sw);
+  const q1 = build(`SELECT COUNT(*) as count, COALESCE(SUM(amount),0) as total FROM bookings WHERE contract_date LIKE $1 AND status != 'キャンセル'`, [prefix]);
+  const q2 = build(`SELECT COUNT(*) as count FROM bookings WHERE contract_date LIKE $1 AND status = 'キャンセル'`, [prefix]);
+  const q3 = build(`SELECT COUNT(*) as count FROM bookings WHERE contract_date=$1 AND status != 'キャンセル'`, [today]);
+  const q4 = build(`SELECT COUNT(DISTINCT customer_name) as count FROM bookings WHERE customer_name != ''`, []);
+  const q5 = build(`SELECT * FROM bookings WHERE 1=1`, []);
 
   const [mRes, mCancelRes, tRes, cRes, rRes] = await Promise.all([
-    pool.query(`SELECT COUNT(*) as count, COALESCE(SUM(amount),0) as total
-                FROM bookings WHERE booking_date LIKE $1 AND status != 'キャンセル'`, [prefix]),
-    pool.query(`SELECT COUNT(*) as count
-                FROM bookings WHERE booking_date LIKE $1 AND status = 'キャンセル'`, [prefix]),
-    pool.query(`SELECT COUNT(*) as count FROM bookings WHERE (booking_date=$1 OR created_at::date = $1::date) AND status != 'キャンセル'`, [today]),
-    pool.query(`SELECT COUNT(DISTINCT customer_name) as count
-                FROM bookings WHERE customer_name != ''`),
-    pool.query(`SELECT * FROM bookings ORDER BY created_at DESC LIMIT 8`),
+    pool.query(q1.sql, q1.params),
+    pool.query(q2.sql, q2.params),
+    pool.query(q3.sql, q3.params),
+    pool.query(q4.sql, q4.params),
+    pool.query(q5.sql + ' ORDER BY created_at DESC LIMIT 8', q5.params),
   ]);
 
   return {
@@ -158,16 +206,16 @@ async function getCustomers() {
       account_name,
       COUNT(*) FILTER (WHERE status != 'キャンセル')                AS visit_count,
       COALESCE(SUM(amount) FILTER (WHERE status != 'キャンセル'), 0) AS total_amount,
-      MAX(booking_date)           AS last_date,
+      MAX(contract_date)           AS last_date,
       (SELECT nationality FROM bookings b2
          WHERE b2.customer_name = b.customer_name AND b2.account_name = b.account_name
-         ORDER BY booking_date DESC LIMIT 1) AS nationality,
+         ORDER BY contract_date DESC LIMIT 1) AS nationality,
       (SELECT address FROM bookings b3
          WHERE b3.customer_name = b.customer_name AND b3.account_name = b.account_name
-         ORDER BY booking_date DESC LIMIT 1) AS address,
+         ORDER BY contract_date DESC LIMIT 1) AS address,
       (SELECT media FROM bookings b4
          WHERE b4.customer_name = b.customer_name AND b4.account_name = b.account_name
-         ORDER BY booking_date DESC LIMIT 1) AS media
+         ORDER BY contract_date DESC LIMIT 1) AS media
     FROM bookings b
     WHERE customer_name IS NOT NULL AND customer_name != ''
     GROUP BY customer_name, account_name
@@ -179,31 +227,30 @@ async function getCustomers() {
 async function getCustomerBookings(name, account) {
   const { rows } = await pool.query(
     `SELECT * FROM bookings WHERE customer_name=$1 AND account_name=$2 AND status != 'キャンセル'
-     ORDER BY booking_date DESC, booking_time DESC`,
+     ORDER BY contract_date DESC, booking_time DESC`,
     [name, account ?? '']
   );
   return rows;
 }
 
 // ─── STATS ───────────────────────────────────────────────
-async function getStats(year, month) {
+async function getStats(year, month, companyId, branch) {
   const prefix = `${_prefix(year, month)}%`;
+  const sw = _storeWhere(companyId, branch);
+  const build = (base, before) => _buildQuery(base, before, sw);
+
+  const q1 = build(`SELECT COUNT(*) as count, COALESCE(SUM(amount),0) as total FROM bookings WHERE contract_date LIKE $1 AND status != 'キャンセル'`, [prefix]);
+  const q2 = build(`SELECT cast_name as name, store_name, COUNT(*) as count, COALESCE(SUM(amount),0) as total FROM bookings WHERE contract_date LIKE $1 AND cast_name != '' AND status != 'キャンセル'`, [prefix]);
+  const q3 = build(`SELECT store_name as name, COUNT(*) as count, COALESCE(SUM(amount),0) as total FROM bookings WHERE contract_date LIKE $1 AND store_name != '' AND status != 'キャンセル'`, [prefix]);
+  const q4 = build(`SELECT media as name, COUNT(*) as count, COALESCE(SUM(amount),0) as total FROM bookings WHERE contract_date LIKE $1 AND media != '' AND status != 'キャンセル'`, [prefix]);
+  const q5 = build(`SELECT nationality as name, COUNT(*) as count FROM bookings WHERE contract_date LIKE $1 AND nationality != '' AND status != 'キャンセル'`, [prefix]);
 
   const [sumRes, castRes, storeRes, mediaRes, natRes] = await Promise.all([
-    pool.query(`SELECT COUNT(*) as count, COALESCE(SUM(amount),0) as total
-                FROM bookings WHERE booking_date LIKE $1 AND status != 'キャンセル'`, [prefix]),
-    pool.query(`SELECT cast_name as name, COUNT(*) as count, COALESCE(SUM(amount),0) as total
-                FROM bookings WHERE booking_date LIKE $1 AND cast_name != '' AND status != 'キャンセル'
-                GROUP BY cast_name ORDER BY count DESC`, [prefix]),
-    pool.query(`SELECT store_name as name, COUNT(*) as count, COALESCE(SUM(amount),0) as total
-                FROM bookings WHERE booking_date LIKE $1 AND store_name != '' AND status != 'キャンセル'
-                GROUP BY store_name ORDER BY count DESC`, [prefix]),
-    pool.query(`SELECT media as name, COUNT(*) as count, COALESCE(SUM(amount),0) as total
-                FROM bookings WHERE booking_date LIKE $1 AND media != '' AND status != 'キャンセル'
-                GROUP BY media ORDER BY count DESC`, [prefix]),
-    pool.query(`SELECT nationality as name, COUNT(*) as count
-                FROM bookings WHERE booking_date LIKE $1 AND nationality != '' AND status != 'キャンセル'
-                GROUP BY nationality ORDER BY count DESC`, [prefix]),
+    pool.query(q1.sql, q1.params),
+    pool.query(q2.sql + ' GROUP BY cast_name, store_name ORDER BY count DESC', q2.params),
+    pool.query(q3.sql + ' GROUP BY store_name ORDER BY count DESC', q3.params),
+    pool.query(q4.sql + ' GROUP BY media ORDER BY count DESC', q4.params),
+    pool.query(q5.sql + ' GROUP BY nationality ORDER BY count DESC', q5.params),
   ]);
 
   // 直近6ヶ月トレンド
@@ -212,11 +259,8 @@ async function getStats(year, month) {
   for (let i = 5; i >= 0; i--) {
     let tm = m - i, ty = y;
     while (tm <= 0) { tm += 12; ty--; }
-    const p = `${_prefix(ty, tm)}%`;
-    const { rows } = await pool.query(
-      `SELECT COUNT(*) as count, COALESCE(SUM(amount),0) as total
-       FROM bookings WHERE booking_date LIKE $1 AND status != 'キャンセル'`, [p]
-    );
+    const qt = build(`SELECT COUNT(*) as count, COALESCE(SUM(amount),0) as total FROM bookings WHERE contract_date LIKE $1 AND status != 'キャンセル'`, [`${_prefix(ty, tm)}%`]);
+    const { rows } = await pool.query(qt.sql, qt.params);
     trend.push({ label: `${tm}月`, count: _int(rows[0].count), total: _int(rows[0].total) });
   }
 
@@ -230,6 +274,114 @@ async function getStats(year, month) {
   };
 }
 
+// ─── OPERATORS ───────────────────────────────────────────
+async function getOperators() {
+  const { rows } = await pool.query(`SELECT id, name FROM operators ORDER BY id ASC`);
+  return rows;
+}
+async function insertOperator(name) {
+  const { rows } = await pool.query(
+    `INSERT INTO operators (name) VALUES ($1) RETURNING *`, [name.trim()]
+  );
+  return rows[0];
+}
+async function updateOperator(id, name) {
+  const { rows } = await pool.query(
+    `UPDATE operators SET name=$1 WHERE id=$2 RETURNING *`, [name.trim(), id]
+  );
+  return rows[0] || null;
+}
+async function deleteOperator(id) {
+  await pool.query(`DELETE FROM operators WHERE id=$1`, [id]);
+}
+
+// ─── COMPANIES ───────────────────────────────────────────
+async function getCompanies() {
+  const { rows } = await pool.query(`SELECT * FROM companies ORDER BY id ASC`);
+  return rows;
+}
+async function insertCompany(f) {
+  const { rows } = await pool.query(
+    `INSERT INTO companies (name, color, address, phone, notes) VALUES ($1,$2,$3,$4,$5) RETURNING *`,
+    [f.name.trim(), f.color||'#7c3aed', f.address||'', f.phone||'', f.notes||'']
+  );
+  return rows[0];
+}
+async function updateCompany(id, f) {
+  const { rows } = await pool.query(
+    `UPDATE companies SET name=$1, color=$2, address=$3, phone=$4, notes=$5 WHERE id=$6 RETURNING *`,
+    [f.name.trim(), f.color||'#7c3aed', f.address||'', f.phone||'', f.notes||'', id]
+  );
+  return rows[0] || null;
+}
+async function deleteCompany(id) {
+  await pool.query(`DELETE FROM companies WHERE id=$1`, [id]);
+}
+async function getCompanySummary() {
+  const today = new Date().toLocaleDateString('sv-SE');
+  const ym    = today.slice(0, 7);
+  const { rows } = await pool.query(`
+    SELECT
+      c.id, c.name, c.color,
+      COUNT(b.id) FILTER (WHERE b.contract_date LIKE $1 AND b.status != 'キャンセル') AS month_count,
+      COALESCE(SUM(b.amount) FILTER (WHERE b.contract_date LIKE $1 AND b.status != 'キャンセル'), 0) AS month_total,
+      COUNT(b.id) FILTER (WHERE b.contract_date=$2 AND b.status != 'キャンセル') AS today_count
+    FROM companies c
+    LEFT JOIN stores s ON s.company_id = c.id
+    LEFT JOIN bookings b ON b.store_name = s.name
+    GROUP BY c.id, c.name, c.color
+    ORDER BY c.id ASC
+  `, [`${ym}%`, today]);
+  return rows;
+}
+
+// ─── STORES (支店) ────────────────────────────────────────
+async function getStores(companyId) {
+  const cid = parseInt(companyId) || 0;
+  const { rows } = await pool.query(
+    `SELECT s.*, c.name AS company_name FROM stores s
+     LEFT JOIN companies c ON c.id = s.company_id
+     WHERE ($1=0 OR s.company_id=$1) ORDER BY s.id ASC`,
+    [cid]
+  );
+  return rows;
+}
+async function insertStore(f) {
+  const { rows } = await pool.query(
+    `INSERT INTO stores (name, color, company_id) VALUES ($1,$2,$3) RETURNING *`,
+    [f.name.trim(), f.color||'#94a3b8', parseInt(f.companyId)||null]
+  );
+  return rows[0];
+}
+async function updateStore(id, f) {
+  const { rows } = await pool.query(
+    `UPDATE stores SET name=$1, color=$2, company_id=$3 WHERE id=$4 RETURNING *`,
+    [f.name.trim(), f.color||'#94a3b8', parseInt(f.companyId)||null, id]
+  );
+  return rows[0] || null;
+}
+async function deleteStore(id) {
+  await pool.query(`DELETE FROM stores WHERE id=$1`, [id]);
+}
+async function getStoreSummary(companyId) {
+  const today = new Date().toLocaleDateString('sv-SE');
+  const ym    = today.slice(0, 7);
+  const cid   = parseInt(companyId) || 0;
+  const { rows } = await pool.query(`
+    SELECT
+      s.id, s.name, s.color, s.company_id,
+      COUNT(b.id) FILTER (WHERE b.contract_date LIKE $1 AND b.status != 'キャンセル') AS month_count,
+      COALESCE(SUM(b.amount) FILTER (WHERE b.contract_date LIKE $1 AND b.status != 'キャンセル'), 0) AS month_total,
+      COUNT(b.id) FILTER (WHERE b.contract_date=$2 AND b.status != 'キャンセル') AS today_count
+    FROM stores s
+    LEFT JOIN bookings b ON b.store_name = s.name
+    WHERE ($3=0 OR s.company_id=$3)
+    GROUP BY s.id, s.name, s.color, s.company_id
+    ORDER BY s.id ASC
+  `, [`${ym}%`, today, cid]);
+  return rows;
+}
+
 module.exports = {
   initDB,
   insertBooking,
@@ -241,4 +393,18 @@ module.exports = {
   getCustomers,
   getCustomerBookings,
   getStats,
+  getOperators,
+  insertOperator,
+  updateOperator,
+  deleteOperator,
+  getCompanies,
+  insertCompany,
+  updateCompany,
+  deleteCompany,
+  getCompanySummary,
+  getStores,
+  insertStore,
+  updateStore,
+  deleteStore,
+  getStoreSummary,
 };

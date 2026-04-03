@@ -1,0 +1,25 @@
+services:
+  - type: web
+    name: customer-mgmt
+    runtime: node
+    buildCommand: npm install
+    startCommand: npm start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DATABASE_URL
+        fromDatabase:
+          name: customer-mgmt-db
+          property: connectionString
+      - key: SESSION_SECRET
+        generateValue: false
+      - key: ADMIN_USER
+        generateValue: false
+      - key: ADMIN_PASS
+        generateValue: false
+
+databases:
+  - name: customer-mgmt-db
+    databaseName: yoyaku
+    user: yoyaku_user
+    plan: free

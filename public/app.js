@@ -11,49 +11,80 @@ function storeOptions(current) {
   return STORES.map(s => `<option value="${s}"${s === current ? ' selected' : ''}>${s}</option>`).join('');
 }
 
-// ─── 担当者管理 ────────────────────────────────────────────
-function getOperators() {
-  try { return JSON.parse(localStorage.getItem('operators') || '[]'); } catch { return []; }
-}
-function saveOperators(list) {
-  localStorage.setItem('operators', JSON.stringify(list));
+// ─── 担当者管理 (DB版) ────────────────────────────────────
+let _operators = [];   // キャッシュ
+
+async function loadOperators() {
+  _operators = await api._fetch('/api/operators');
 }
 function operatorOptions(current) {
-  return getOperators().map(o => `<option value="${esc(o)}"${o === current ? ' selected' : ''}>${esc(o)}</option>`).join('');
+  return _operators.map(o =>
+    `<option value="${esc(o.name)}"${o.name === current ? ' selected' : ''}>${esc(o.name)}</option>`
+  ).join('');
 }
-function addOperator() {
-  const name = (prompt('担当者名を入力してください') || '').trim();
-  if (!name) return;
-  const list = getOperators();
-  if (list.includes(name)) { toast('すでに登録されています', 'error'); return; }
-  list.push(name);
-  saveOperators(list);
-  // 全ての担当者selectを更新
+function _refreshOperatorSelects(selectVal) {
   document.querySelectorAll('.operator-select').forEach(sel => {
-    const cur = sel.value;
+    const cur = selectVal !== undefined ? selectVal : sel.value;
     sel.innerHTML = `<option value="">-- 選択 --</option>${operatorOptions(cur)}<option value="__add__">＋ 担当者を追加...</option>`;
     sel.value = cur;
   });
-  // 追加した担当者を選択状態に
-  document.querySelectorAll('.operator-select').forEach(sel => { if (!sel.value || sel.value === '__add__') sel.value = name; });
-  toast(`担当者「${name}」を追加しました`);
 }
-function deleteOperator(name) {
-  if (!confirm(`「${name}」を担当者リストから削除しますか？`)) return;
-  saveOperators(getOperators().filter(o => o !== name));
-  toast(`「${name}」を削除しました`);
-  renderOperatorSettings();
+async function addOperator() {
+  const name = (prompt('担当者名を入力してください') || '').trim();
+  if (!name) return;
+  try {
+    const row = await api._fetch('/api/operators', { method:'POST', body: JSON.stringify({ name }) });
+    _operators.push(row);
+    _refreshOperatorSelects(row.name);
+    toast(`担当者「${name}」を追加しました`);
+  } catch (e) { toast(e.message, 'error'); }
 }
-function renderOperatorSettings() {
-  const list = getOperators();
+async function renderOperatorSettings() {
   const el = document.getElementById('operatorList');
   if (!el) return;
-  el.innerHTML = list.length === 0
+  await loadOperators();
+  el.innerHTML = _operators.length === 0
     ? '<div style="color:var(--text-muted);font-size:13px">担当者が登録されていません</div>'
-    : list.map(o => `<div class="op-row">
-        <span>${esc(o)}</span>
-        <button class="btn btn-danger btn-sm" onclick="deleteOperator('${esc(o)}')">削除</button>
+    : _operators.map(o => `<div class="op-row" id="op-row-${o.id}">
+        <span class="op-name" id="op-name-${o.id}">${esc(o.name)}</span>
+        <span class="op-edit-input" id="op-edit-${o.id}" style="display:none;flex:1;margin-right:8px">
+          <input class="form-control" style="height:28px;font-size:13px" id="op-input-${o.id}" value="${esc(o.name)}">
+        </span>
+        <span style="display:flex;gap:6px">
+          <button class="btn btn-secondary btn-sm" id="op-btn-edit-${o.id}" onclick="startEditOperator(${o.id})">修正</button>
+          <button class="btn btn-primary btn-sm"   id="op-btn-save-${o.id}" style="display:none" onclick="saveEditOperator(${o.id})">保存</button>
+          <button class="btn btn-danger btn-sm"    onclick="deleteOperator(${o.id},'${esc(o.name)}')">削除</button>
+        </span>
       </div>`).join('');
+}
+function startEditOperator(id) {
+  document.getElementById(`op-name-${id}`).style.display = 'none';
+  document.getElementById(`op-edit-${id}`).style.display = 'inline-flex';
+  document.getElementById(`op-btn-edit-${id}`).style.display = 'none';
+  document.getElementById(`op-btn-save-${id}`).style.display = '';
+  document.getElementById(`op-input-${id}`)?.focus();
+}
+async function saveEditOperator(id) {
+  const newName = (document.getElementById(`op-input-${id}`)?.value || '').trim();
+  if (!newName) { toast('名前を入力してください', 'error'); return; }
+  const old = _operators.find(o => o.id === id);
+  if (old && newName === old.name) { renderOperatorSettings(); return; }
+  try {
+    const row = await api._fetch(`/api/operators/${id}`, { method:'PUT', body: JSON.stringify({ name: newName }) });
+    const idx = _operators.findIndex(o => o.id === id);
+    if (idx !== -1) _operators[idx] = row;
+    _refreshOperatorSelects();
+    renderOperatorSettings();
+    toast(`「${old?.name}」→「${newName}」に変更しました`);
+  } catch (e) { toast(e.message, 'error'); }
+}
+async function deleteOperator(id, name) {
+  if (!confirm(`「${name}」を担当者リストから削除しますか？`)) return;
+  await api._fetch(`/api/operators/${id}`, { method:'DELETE' });
+  _operators = _operators.filter(o => o.id !== id);
+  _refreshOperatorSelects();
+  renderOperatorSettings();
+  toast(`「${name}」を削除しました`);
 }
 function openOperatorManager() {
   openModal('👤 担当者管理', `
@@ -65,16 +96,16 @@ function openOperatorManager() {
   `);
   renderOperatorSettings();
 }
-function addOperatorFromInput() {
+async function addOperatorFromInput() {
   const name = (document.getElementById('newOpInput')?.value || '').trim();
   if (!name) { toast('名前を入力してください', 'error'); return; }
-  const list = getOperators();
-  if (list.includes(name)) { toast('すでに登録されています', 'error'); return; }
-  list.push(name);
-  saveOperators(list);
-  document.getElementById('newOpInput').value = '';
-  renderOperatorSettings();
-  toast(`「${name}」を追加しました`);
+  try {
+    const row = await api._fetch('/api/operators', { method:'POST', body: JSON.stringify({ name }) });
+    _operators.push(row);
+    document.getElementById('newOpInput').value = '';
+    renderOperatorSettings();
+    toast(`「${name}」を追加しました`);
+  } catch (e) { toast(e.message, 'error'); }
 }
 
 function mediaOptions(current) {
@@ -90,19 +121,14 @@ function statusBadge(status) {
   return `<span class="badge ${cls}">${esc(status || '対応中')}</span>`;
 }
 
-const STORE_COLORS = {
-  '新宿店':   'store-shinjuku',
-  '池袋店':   'store-ikebukuro',
-  '錦糸町店': 'store-kinshicho',
-  '五反田店': 'store-gotanda',
-  '大阪店':   'store-osaka',
-  '船橋店':   'store-funabashi',
-};
+let _storesCache = [];  // DB から取得した店舗一覧
 
 function storeBadge(name) {
   if (!name) return '—';
-  const cls = STORE_COLORS[name] || 'store-other';
-  return `<span class="store-badge ${cls}">${esc(name)}</span>`;
+  const s = _storesCache.find(s => s.name === name);
+  const color = s?.color || '#7c3aed';
+  const bg    = color + '33';  // 20% opacity
+  return `<span class="store-badge" style="background:${bg};color:${color};border-color:${color}40">${esc(name)}</span>`;
 }
 
 function kvRowHTML(label, html) {
@@ -115,11 +141,13 @@ function kvRowHTML(label, html) {
 // ═══════════════════════════════════════════════════════════
 const state = {
   page: 'dashboard',
-  year:       new Date().getFullYear(),
-  month:      new Date().getMonth() + 1,
-  statsYear:  new Date().getFullYear(),
-  statsMonth: new Date().getMonth() + 1,
-  editingId:  null,
+  year:          new Date().getFullYear(),
+  month:         new Date().getMonth() + 1,
+  statsYear:     new Date().getFullYear(),
+  statsMonth:    new Date().getMonth() + 1,
+  editingId:     null,
+  selectedCompany: null,  // null = 全会社, { id, name, color }
+  selectedBranch:  null,  // null = 全支店, { id, name, color }
 };
 
 // ═══════════════════════════════════════════════════════════
@@ -131,17 +159,27 @@ const api = {
       headers: { 'Content-Type': 'application/json' },
       ...opts,
     });
+    if (res.status === 401) { window.location.href = '/login.html'; return; }
     if (!res.ok) throw new Error(await res.text());
     return res.json();
   },
-  getBookings:       (y, m) => api._fetch(`/api/bookings?year=${y}&month=${m}`),
-  createBooking:     (d)    => api._fetch('/api/bookings', { method: 'POST',   body: JSON.stringify(d) }),
-  updateBooking:     (id,d) => api._fetch(`/api/bookings/${id}`, { method: 'PUT', body: JSON.stringify(d) }),
-  deleteBooking:     (id)   => api._fetch(`/api/bookings/${id}`, { method: 'DELETE' }),
-  getDashboard:      (y, m) => api._fetch(`/api/dashboard?year=${y}&month=${m}`),
-  getCustomers:      ()     => api._fetch('/api/customers'),
-  getCustomerBkgs:   (name, account) => api._fetch(`/api/customers/bookings?name=${encodeURIComponent(name)}&account=${encodeURIComponent(account||'')}`),
-  getStats:          (y, m) => api._fetch(`/api/stats?year=${y}&month=${m}`),
+  _filterParam: () => {
+    const c = state.selectedCompany ? `&company_id=${state.selectedCompany.id}` : '';
+    const b = state.selectedBranch  ? `&branch=${encodeURIComponent(state.selectedBranch.name)}` : '';
+    return c + b;
+  },
+  getBookings:      (y, m)      => api._fetch(`/api/bookings?year=${y}&month=${m}${api._filterParam()}`),
+  createBooking:    (d)         => api._fetch('/api/bookings', { method:'POST', body:JSON.stringify(d) }),
+  updateBooking:    (id, d)     => api._fetch(`/api/bookings/${id}`, { method:'PUT', body:JSON.stringify(d) }),
+  deleteBooking:    (id)        => api._fetch(`/api/bookings/${id}`, { method:'DELETE' }),
+  getDashboard:     (y, m)      => api._fetch(`/api/dashboard?year=${y}&month=${m}${api._filterParam()}`),
+  getCustomers:     ()          => api._fetch('/api/customers'),
+  getCustomerBkgs:  (n, a)      => api._fetch(`/api/customers/bookings?name=${encodeURIComponent(n)}&account=${encodeURIComponent(a||'')}`),
+  getStats:         (y, m)      => api._fetch(`/api/stats?year=${y}&month=${m}${api._filterParam()}`),
+  getCompanies:     ()          => api._fetch('/api/companies'),
+  getCompanySummary:()          => api._fetch('/api/companies/summary'),
+  getStores:        (cid)       => api._fetch(`/api/stores${cid ? `?company_id=${cid}` : ''}`),
+  getStoreSummary:  (cid)       => api._fetch(`/api/stores/summary${cid ? `?company_id=${cid}` : ''}`),
 };
 
 // ═══════════════════════════════════════════════════════════
@@ -260,12 +298,12 @@ async function renderDashboard() {
       <div class="stat-card blue">
         <div class="stat-icon">📅</div>
         <div class="stat-value">${todayCount}</div>
-        <div class="stat-label">本日の予約件数</div>
+        <div class="stat-label">本日の成約件数</div>
       </div>
       <div class="stat-card">
         <div class="stat-icon">📝</div>
         <div class="stat-value">${monthSummary.count}</div>
-        <div class="stat-label">今月の予約件数（キャンセル除く）</div>
+        <div class="stat-label">今月の成約件数（キャンセル除く）</div>
         ${monthCancelled > 0 ? `<div class="stat-sub-cancel">キャンセル ${monthCancelled}件</div>` : ''}
       </div>
       <div class="stat-card gold">
@@ -328,7 +366,7 @@ async function renderBookings() {
       <div class="summary-chips">
         <div class="schip">
           <div class="schip-val">${active.length}</div>
-          <div class="schip-label">件数</div>
+          <div class="schip-label">成約数</div>
         </div>
         <div class="schip gold">
           <div class="schip-val" style="font-size:15px">¥${totalAmount.toLocaleString()}</div>
@@ -425,8 +463,8 @@ function bookingTableHTML(rows, actions) {
         <td><strong>${esc(b.customer_name||'—')}</strong>${b.account_name ? `<br><span class="td-account">@${esc(b.account_name)}</span>` : ''}</td>
         <td class="td-muted">${esc(b.cast_name)}</td>
         <td>${esc(b.course)}</td>
-        <td>${esc(b.nationality)}</td>
         <td>${esc(b.media)}</td>
+        <td>${esc(b.nationality)}</td>
         <td class="td-amount">${fmtAmt(b.amount)}</td>
         <td class="td-muted">${esc(b.user_name||'—')}</td>
         ${actions ? `<td class="td-actions">
@@ -484,6 +522,7 @@ function bookingFormHTML(b = {}) {
   const v = (field, def = '') => esc(b[field] ?? def);
   const today = new Date().toLocaleDateString('sv-SE');
   const contractDateVal = b.id !== undefined ? (b.contract_date || '') : today;
+  const defaultStore = b.id !== undefined ? (b.store_name || '') : (b.store_name || state.selectedStore?.name || '');
   return `
     <div class="fg4">
       <div class="form-group">
@@ -496,7 +535,7 @@ function bookingFormHTML(b = {}) {
         <label class="form-label">店舗名</label>
         <select class="form-control" id="fStore">
           <option value="">-- 選択してください --</option>
-          ${storeOptions(b.store_name || '')}
+          ${storeOptionsFromDB(defaultStore)}
         </select>
       </div>
       <div class="form-group">
@@ -611,7 +650,8 @@ function collectForm() {
 // ═══════════════════════════════════════════════════════════
 // REGISTER PAGE
 // ═══════════════════════════════════════════════════════════
-function renderRegister() {
+async function renderRegister() {
+  await Promise.all([loadOperators(), api.getStores().then(s => _storesCache = s)]);
   content().innerHTML = `
     <div class="page-header">
       <div>
@@ -729,6 +769,9 @@ async function submitNewBooking() {
   if (!data.customerName && !data.castName) {
     toast('お客様名かキャスト名を入力してください', 'error'); return;
   }
+  if (!data.storeName) {
+    toast('店舗名を選択してください', 'error'); return;
+  }
   await api.createBooking(data);
   toast('登録しました！');
   clearRegisterForm();
@@ -836,6 +879,194 @@ async function showCustomerDetail(idx) {
 // STATS
 // ═══════════════════════════════════════════════════════════
 let _chartInstance = null;
+let _statsCache = null;
+
+function exportStatsCSV() {
+  if (!_statsCache) return;
+  const { summary, byCast, byStore, byMedia, byNationality, trend, avgPerDay, label } = _statsCache;
+
+  const rows = [];
+  const q = v => (v === null || v === undefined) ? '' : String(v).includes(',') ? `"${String(v).replace(/"/g,'""')}"` : String(v);
+  const line = (...cols) => rows.push(cols.map(q).join(','));
+
+  line(`${label} 月末レポート`);
+  line('');
+
+  // サマリー
+  line('■ サマリー');
+  line('成約件数', '合計売上', '平均単価', '一日平均件数');
+  line(summary.count, summary.total, summary.count ? Math.round(summary.total / summary.count) : 0, avgPerDay);
+  line('');
+
+  // 店舗別
+  line('■ 店舗別');
+  line('店舗名', '件数', '売上');
+  byStore.forEach(r => line(r.name, r.count, r.total));
+  line('');
+
+  // キャスト別
+  line('■ キャスト別');
+  line('キャスト名', '店舗', '件数', '売上');
+  byCast.forEach(r => line(r.name, r.store_name || '', r.count, r.total));
+  line('');
+
+  // 媒体別
+  line('■ 媒体別');
+  line('媒体', '件数', '売上');
+  byMedia.forEach(r => line(r.name, r.count, r.total));
+  line('');
+
+  // 国籍別
+  line('■ 国籍別');
+  line('国', '件数');
+  byNationality.forEach(r => line(r.name, r.count));
+  line('');
+
+  // トレンド
+  line('■ 月別トレンド');
+  line('月', '件数', '売上');
+  trend.forEach(r => line(r.label, r.count, r.total));
+
+  const bom = '\uFEFF';
+  const blob = new Blob([bom + rows.join('\n')], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `月末レポート_${label}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+function printMonthlyReport() {
+  if (!_statsCache) return;
+  const { summary, byStore, byMedia, byNationality, trend, avgPerDay, label } = _statsCache;
+
+  const CHART_COLORS = [
+    '#7c3aed','#a78bfa','#6ee7b7','#93c5fd','#fca5a5',
+    '#fcd34d','#f9a8d4','#fb923c','#34d399','#60a5fa',
+  ];
+
+  const avgUnit = Math.round(summary.count ? summary.total / summary.count : 0);
+
+  const storeRows = byStore.map((r, i) => {
+    const pct = summary.total ? Math.round(r.total / summary.total * 100) : 0;
+    const color = CHART_COLORS[i % CHART_COLORS.length];
+    return `<tr>
+      <td><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${color};margin-right:6px"></span>${r.name}</td>
+      <td style="text-align:right">${r.count}件</td>
+      <td style="text-align:right">¥${Number(r.total).toLocaleString()}</td>
+      <td style="text-align:right">${pct}%</td>
+    </tr>`;
+  }).join('');
+
+  const mediaRows = byMedia.map(r => `<tr>
+    <td>${r.name}</td>
+    <td style="text-align:right">${r.count}件</td>
+    <td style="text-align:right">¥${Number(r.total).toLocaleString()}</td>
+  </tr>`).join('');
+
+  const natLabels = JSON.stringify(byNationality.map(r => r.name));
+  const natData   = JSON.stringify(byNationality.map(r => Number(r.count)));
+  const natColors = JSON.stringify(byNationality.map((_, i) => CHART_COLORS[i % CHART_COLORS.length]));
+
+  const trendRows = trend.map(r => `<tr>
+    <td>${r.label}</td>
+    <td style="text-align:right">${r.count}件</td>
+    <td style="text-align:right">¥${Number(r.total).toLocaleString()}</td>
+  </tr>`).join('');
+
+  const html = `<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<title>月末レポート ${label}</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4"></scr` + `ipt>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Hiragino Kaku Gothic ProN', Meiryo, sans-serif; font-size: 13px; color: #1e1b4b; background: #fff; padding: 32px; }
+  h1 { font-size: 22px; font-weight: 700; margin-bottom: 4px; }
+  .subtitle { color: #6b7280; font-size: 13px; margin-bottom: 28px; }
+  .summary-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 28px; }
+  .summary-card { border: 1px solid #e5e7eb; border-radius: 10px; padding: 16px; text-align: center; }
+  .summary-card .val { font-size: 22px; font-weight: 700; color: #7c3aed; }
+  .summary-card .lbl { font-size: 11px; color: #6b7280; margin-top: 4px; }
+  .section { margin-bottom: 28px; }
+  .section-title { font-size: 14px; font-weight: 700; border-left: 3px solid #7c3aed; padding-left: 8px; margin-bottom: 12px; }
+  .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+  table { width: 100%; border-collapse: collapse; font-size: 12px; }
+  th { background: #f5f3ff; color: #4b5563; font-weight: 600; padding: 6px 10px; text-align: left; border-bottom: 1px solid #e5e7eb; }
+  td { padding: 6px 10px; border-bottom: 1px solid #f3f4f6; }
+  .chart-wrap { display: flex; justify-content: center; }
+  canvas { max-width: 260px; max-height: 260px; }
+  @media print {
+    body { padding: 16px; }
+    button { display: none; }
+  }
+</style>
+</head>
+<body>
+<h1>月末レポート</h1>
+<div class="subtitle">${label} 集計</div>
+
+<div class="summary-grid">
+  <div class="summary-card"><div class="val">${summary.count}</div><div class="lbl">成約件数</div></div>
+  <div class="summary-card"><div class="val" style="font-size:16px">¥${Number(summary.total).toLocaleString()}</div><div class="lbl">合計売上</div></div>
+  <div class="summary-card"><div class="val" style="font-size:16px">¥${avgUnit.toLocaleString()}</div><div class="lbl">平均単価</div></div>
+  <div class="summary-card"><div class="val">${avgPerDay}</div><div class="lbl">一日平均件数</div></div>
+</div>
+
+<div class="section">
+  <div class="section-title">店舗別</div>
+  <table>
+    <thead><tr><th>店舗</th><th style="text-align:right">件数</th><th style="text-align:right">売上</th><th style="text-align:right">割合</th></tr></thead>
+    <tbody>${storeRows}</tbody>
+  </table>
+</div>
+
+<div class="two-col">
+  <div class="section">
+    <div class="section-title">媒体別</div>
+    <table>
+      <thead><tr><th>媒体</th><th style="text-align:right">件数</th><th style="text-align:right">売上</th></tr></thead>
+      <tbody>${mediaRows}</tbody>
+    </table>
+  </div>
+  <div class="section">
+    <div class="section-title">国籍別</div>
+    <div class="chart-wrap"><canvas id="natChart"></canvas></div>
+  </div>
+</div>
+
+<div class="section">
+  <div class="section-title">月別トレンド（直近6ヶ月）</div>
+  <table>
+    <thead><tr><th>月</th><th style="text-align:right">件数</th><th style="text-align:right">売上</th></tr></thead>
+    <tbody>${trendRows}</tbody>
+  </table>
+</div>
+
+<script>
+new Chart(document.getElementById('natChart'), {
+  type: 'pie',
+  data: {
+    labels: ${natLabels},
+    datasets: [{ data: ${natData}, backgroundColor: ${natColors}, borderWidth: 1 }]
+  },
+  options: {
+    plugins: {
+      legend: { position: 'bottom', labels: { font: { size: 11 }, boxWidth: 12 } }
+    }
+  }
+});
+window.onload = () => setTimeout(() => window.print(), 800);
+</scr` + `ipt>
+</body></html>`;
+
+  const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
+  const url  = URL.createObjectURL(blob);
+  window.open(url, '_blank');
+  setTimeout(() => URL.revokeObjectURL(url), 60000);
+}
 
 async function renderStats() {
   content().innerHTML = `
@@ -843,10 +1074,14 @@ async function renderStats() {
       <div>
         <h1 class="page-title">集計・分析</h1>
       </div>
-      <div class="month-nav">
-        <button class="month-nav-btn" onclick="changeStatsMonth(-1)">◀</button>
-        <span class="month-nav-label" id="statsMonthLabel">${state.statsYear}年${state.statsMonth}月</span>
-        <button class="month-nav-btn" onclick="changeStatsMonth(1)">▶</button>
+      <div style="display:flex;align-items:center;gap:12px">
+        <div class="month-nav">
+          <button class="month-nav-btn" onclick="changeStatsMonth(-1)">◀</button>
+          <span class="month-nav-label" id="statsMonthLabel">${state.statsYear}年${state.statsMonth}月</span>
+          <button class="month-nav-btn" onclick="changeStatsMonth(1)">▶</button>
+        </div>
+        <button class="btn btn-secondary" onclick="exportStatsCSV()">📥 CSV出力</button>
+        <button class="btn btn-secondary" onclick="printMonthlyReport()">🖨️ 月末レポート</button>
       </div>
     </div>
     <div id="statsContent"><div class="loading-wrap"><div class="spinner"></div></div></div>
@@ -860,12 +1095,20 @@ async function loadStats() {
 
   document.getElementById('statsMonthLabel').textContent = `${state.statsYear}年${state.statsMonth}月`;
 
+  const daysInMonth = new Date(state.statsYear, state.statsMonth, 0).getDate();
+  const now = new Date();
+  const isCurrentMonth = (state.statsYear === now.getFullYear() && state.statsMonth === now.getMonth() + 1);
+  const elapsedDays = isCurrentMonth ? now.getDate() : daysInMonth;
+  const avgPerDay   = summary.count ? (summary.count / elapsedDays).toFixed(1) : '0.0';
+  const statsLabel  = `${state.statsYear}年${state.statsMonth}月`;
+  _statsCache = { summary, byCast, byStore, byMedia, byNationality, trend, avgPerDay, label: statsLabel };
+
   document.getElementById('statsContent').innerHTML = `
     <div class="stat-grid" style="margin-bottom:20px">
       <div class="stat-card">
         <div class="stat-icon">📝</div>
         <div class="stat-value">${summary.count}</div>
-        <div class="stat-label">予約件数</div>
+        <div class="stat-label">成約件数</div>
       </div>
       <div class="stat-card gold">
         <div class="stat-icon">💰</div>
@@ -876,6 +1119,11 @@ async function loadStats() {
         <div class="stat-icon">📊</div>
         <div class="stat-value">${summary.count ? Math.round(summary.total / summary.count).toLocaleString() : 0}</div>
         <div class="stat-label">平均単価 (円)</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-icon">📅</div>
+        <div class="stat-value">${avgPerDay}</div>
+        <div class="stat-label">一日平均件数</div>
       </div>
     </div>
 
@@ -914,7 +1162,7 @@ async function loadStats() {
         <div class="slist">
           ${byCast.length === 0 ? '<div style="color:var(--text-muted);font-size:13px">データなし</div>' :
             byCast.map(r => `<div class="slist-item">
-              <span>${esc(r.name)}</span>
+              <span>${esc(r.name)}${r.store_name ? ` <span class="slist-store">${esc(r.store_name)}</span>` : ''}</span>
               <span class="slist-right">${r.count}件 <span class="text-gold">${fmtAmt(r.total)}</span></span>
             </div>`).join('')}
         </div>
@@ -1006,8 +1254,12 @@ function openAddModal() {
 
 async function openEditModal(id) {
   state.editingId = id;
-  const bookings  = await api.getBookings(state.year, state.month);
-  const b         = bookings.find(x => x.id === id);
+  const [bookings] = await Promise.all([
+    api.getBookings(state.year, state.month),
+    loadOperators(),
+    api.getStores().then(s => _storesCache = s),
+  ]);
+  const b = bookings.find(x => x.id === id);
   if (!b) { toast('予約が見つかりません', 'error'); return; }
 
   openModal('✏️ 予約を編集', `
@@ -1023,6 +1275,9 @@ async function saveModalBooking() {
   const data = collectForm();
   if (!data.customerName && !data.castName) {
     toast('お客様名かキャスト名を入力してください', 'error'); return;
+  }
+  if (!data.storeName) {
+    toast('店舗名を選択してください', 'error'); return;
   }
   if (state.editingId) {
     await api.updateBooking(state.editingId, data);
@@ -1078,7 +1333,288 @@ function toggleTheme() {
   localStorage.setItem('theme', next);
 }
 
-document.addEventListener('DOMContentLoaded', () => {
-  applyTheme(localStorage.getItem('theme') || 'dark');
+// ═══════════════════════════════════════════════════════════
+// STORE LANDING
+// ═══════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════════
+// LANDING — 会社選択
+// ═══════════════════════════════════════════════════════════
+let _companiesCache = [];
+
+async function _refreshLandingCards() {
+  const el = document.getElementById('slCards');
+  if (!el) return;
+  _companiesCache = await api.getCompanySummary();
+  if (!_companiesCache.length) {
+    el.innerHTML = `<div class="sl-empty">
+      <p>会社・ブランドが登録されていません</p>
+      <button class="btn btn-primary" onclick="openCompanyManager()">＋ 追加する</button>
+    </div>`;
+    return;
+  }
+  el.innerHTML = _companiesCache.map(c => `
+    <div class="sl-card" onclick="selectCompany(${c.id})" style="--sc:${c.color}">
+      <div class="sl-card-icon" style="color:${c.color}">🏢</div>
+      <div class="sl-card-name">${esc(c.name)}</div>
+      <div class="sl-card-stats">
+        <span>今月 <strong>${c.month_count}</strong>件</span>
+        <span>今日 <strong>${c.today_count}</strong>件</span>
+      </div>
+      <div class="sl-card-amount">¥${parseInt(c.month_total||0).toLocaleString()}</div>
+    </div>
+  `).join('');
+}
+
+async function showLanding() {
+  document.getElementById('storeLanding').style.display = 'flex';
+  document.getElementById('mainApp').style.display      = 'none';
+  state.selectedCompany = null;
+  state.selectedBranch  = null;
+  document.getElementById('slCards').innerHTML =
+    '<div class="loading-wrap"><div class="spinner"></div></div>';
+  await Promise.all([loadOperators(), _refreshLandingCards()]);
+}
+
+async function selectCompany(id) {
+  const c = id ? _companiesCache.find(x => x.id === id) : null;
+  state.selectedCompany = c ? { id: c.id, name: c.name, color: c.color } : null;
+  state.selectedBranch  = null;
+  // 支店キャッシュ更新
+  _storesCache = c ? await api.getStores(c.id) : [];
+  _updateTopbarStore();
+  document.getElementById('storeLanding').style.display = 'none';
+  document.getElementById('mainApp').style.display      = 'flex';
   navigate('dashboard');
+}
+
+function goToLanding() { showLanding(); }
+
+function _updateTopbarStore() {
+  const c = state.selectedCompany;
+  const b = state.selectedBranch;
+  const label = document.getElementById('storeSelectorLabel');
+  if (label) label.textContent = b ? `${c?.name} / ${b.name}` : (c?.name || '全会社');
+  const btn = document.getElementById('storeSelectorBtn');
+  if (btn) btn.style.borderColor = c ? (c.color + '80') : '';
+}
+
+// ─── 支店フィルター（トップバー） ────────────────────────
+let _branchesCache = [];
+
+async function openBranchSelector() {
+  if (!state.selectedCompany) return;
+  _branchesCache = await api.getStoreSummary(state.selectedCompany.id);
+  openModal(`🏪 支店を選択 — ${esc(state.selectedCompany.name)}`, `
+    <div style="display:flex;flex-direction:column;gap:8px">
+      <button class="sl-branch-btn ${!state.selectedBranch ? 'active' : ''}" onclick="selectBranch(0)">
+        <span>🌐 全支店</span>
+      </button>
+      ${_branchesCache.map(b => `
+        <button class="sl-branch-btn ${state.selectedBranch?.name === b.name ? 'active' : ''}"
+          onclick="selectBranch(${b.id})" style="--sc:${b.color}">
+          <span class="sl-dot" style="background:${b.color}"></span>
+          <span style="flex:1;text-align:left">${esc(b.name)}</span>
+          <span style="font-size:12px;color:var(--text-dim)">今月${b.month_count}件</span>
+        </button>
+      `).join('')}
+    </div>
+  `);
+}
+
+async function selectBranch(id) {
+  const b = id ? _branchesCache.find(x => x.id === id) : null;
+  state.selectedBranch = b ? { id: b.id, name: b.name, color: b.color } : null;
+  _updateTopbarStore();
+  closeModal();
+  await navigate(state.page);
+}
+
+// ─── 会社管理 ─────────────────────────────────────────────
+async function openCompanyManager() {
+  openModal('🏢 会社・ブランド管理', `
+    <div style="display:grid;grid-template-columns:1fr auto auto;gap:8px;align-items:end;margin-bottom:4px">
+      <div>
+        <label class="form-label">会社名</label>
+        <input class="form-control" id="ncName" placeholder="例：○○プロダクション">
+      </div>
+      <div>
+        <label class="form-label">カラー</label>
+        <input type="color" id="ncColor" value="#7c3aed" style="height:40px;width:48px;border:none;border-radius:8px;cursor:pointer;padding:2px">
+      </div>
+      <button class="btn btn-primary" onclick="addCompanyFromInput()">追加</button>
+    </div>
+    <div id="companyMgmtList" style="margin-top:16px"></div>
+  `);
+  await renderCompanyMgmtList();
+}
+
+async function renderCompanyMgmtList() {
+  const el = document.getElementById('companyMgmtList');
+  if (!el) return;
+  const list = await api.getCompanies();
+  if (!list.length) { el.innerHTML = '<div style="color:var(--text-muted);font-size:13px">登録なし</div>'; return; }
+  el.innerHTML = list.map(c => `
+    <div class="op-row" id="cmrow-${c.id}">
+      <span class="sl-dot" style="background:${c.color}"></span>
+      <span class="op-name" id="cmname-${c.id}">${esc(c.name)}</span>
+      <span id="cmedit-${c.id}" style="display:none;flex:1;gap:6px;align-items:center">
+        <input class="form-control" style="height:30px;font-size:13px;flex:1" id="cminput-${c.id}" value="${esc(c.name)}">
+        <input type="color" id="cmcolor-${c.id}" value="${c.color}" style="height:30px;width:40px;border:none;border-radius:6px;cursor:pointer;padding:2px">
+      </span>
+      <span style="display:flex;gap:6px;margin-left:auto">
+        <button class="btn btn-secondary btn-sm" id="cmbtn-edit-${c.id}" onclick="startEditCompany(${c.id})">修正</button>
+        <button class="btn btn-primary btn-sm"   id="cmbtn-save-${c.id}" style="display:none" onclick="saveEditCompany(${c.id})">保存</button>
+        <button class="btn btn-danger btn-sm"    onclick="deleteCompanyUI(${c.id},'${esc(c.name)}')">削除</button>
+      </span>
+    </div>
+  `).join('');
+}
+
+async function addCompanyFromInput() {
+  const name  = (document.getElementById('ncName')?.value || '').trim();
+  const color = document.getElementById('ncColor')?.value || '#7c3aed';
+  if (!name) { toast('会社名を入力してください', 'error'); return; }
+  try {
+    await api._fetch('/api/companies', { method:'POST', body: JSON.stringify({ name, color }) });
+    document.getElementById('ncName').value = '';
+    await renderCompanyMgmtList();
+    await _refreshLandingCards();
+    toast(`「${name}」を追加しました`);
+  } catch(e) { toast(e.message, 'error'); }
+}
+
+function startEditCompany(id) {
+  document.getElementById(`cmname-${id}`).style.display = 'none';
+  const el = document.getElementById(`cmedit-${id}`);
+  el.style.display = 'flex'; el.style.flex = '1';
+  document.getElementById(`cmbtn-edit-${id}`).style.display = 'none';
+  document.getElementById(`cmbtn-save-${id}`).style.display = '';
+  document.getElementById(`cminput-${id}`)?.focus();
+}
+
+async function saveEditCompany(id) {
+  const name  = (document.getElementById(`cminput-${id}`)?.value || '').trim();
+  const color = document.getElementById(`cmcolor-${id}`)?.value || '#7c3aed';
+  if (!name) { toast('会社名を入力してください', 'error'); return; }
+  try {
+    await api._fetch(`/api/companies/${id}`, { method:'PUT', body: JSON.stringify({ name, color, address:'', phone:'', notes:'' }) });
+    await renderCompanyMgmtList();
+    await _refreshLandingCards();
+    toast('更新しました');
+  } catch(e) { toast(e.message, 'error'); }
+}
+
+async function deleteCompanyUI(id, name) {
+  if (!confirm(`「${name}」を削除しますか？\n支店・予約データは残ります。`)) return;
+  await api._fetch(`/api/companies/${id}`, { method:'DELETE' });
+  await renderCompanyMgmtList();
+  await _refreshLandingCards();
+  toast(`「${name}」を削除しました`);
+}
+
+// ─── 支店管理 ─────────────────────────────────────────────
+async function openStoreManager() {
+  const cid = state.selectedCompany?.id;
+  openModal('🏪 支店管理', `
+    <div style="display:grid;grid-template-columns:1fr auto auto;gap:8px;align-items:end;margin-bottom:4px">
+      <div>
+        <label class="form-label">支店名</label>
+        <input class="form-control" id="nsName" placeholder="例：渋谷店">
+      </div>
+      <div>
+        <label class="form-label">カラー</label>
+        <input type="color" id="nsColor" value="#94a3b8" style="height:40px;width:48px;border:none;border-radius:8px;cursor:pointer;padding:2px">
+      </div>
+      <button class="btn btn-primary" onclick="addStoreFromInput(${cid||0})">追加</button>
+    </div>
+    <div id="storeMgmtList" style="margin-top:16px"></div>
+  `);
+  await renderStoreMgmtList(cid);
+}
+
+async function renderStoreMgmtList(cid) {
+  const el = document.getElementById('storeMgmtList');
+  if (!el) return;
+  const list = await api.getStores(cid);
+  _storesCache = list;
+  if (!list.length) { el.innerHTML = '<div style="color:var(--text-muted);font-size:13px">支店が登録されていません</div>'; return; }
+  el.innerHTML = list.map(s => `
+    <div class="op-row" id="smrow-${s.id}">
+      <span class="sl-dot" style="background:${s.color}"></span>
+      <span class="op-name" id="smname-${s.id}">${esc(s.name)}</span>
+      <span id="smedit-${s.id}" style="display:none;flex:1;gap:6px;align-items:center">
+        <input class="form-control" style="height:30px;font-size:13px;flex:1" id="sminput-${s.id}" value="${esc(s.name)}">
+        <input type="color" id="smcolor-${s.id}" value="${s.color}" style="height:30px;width:40px;border:none;border-radius:6px;cursor:pointer;padding:2px">
+      </span>
+      <span style="display:flex;gap:6px;margin-left:auto">
+        <button class="btn btn-secondary btn-sm" id="smbtn-edit-${s.id}" onclick="startEditStore(${s.id})">修正</button>
+        <button class="btn btn-primary btn-sm"   id="smbtn-save-${s.id}" style="display:none" onclick="saveEditStore(${s.id},${cid||0})">保存</button>
+        <button class="btn btn-danger btn-sm"    onclick="deleteStoreUI(${s.id},'${esc(s.name)}',${cid||0})">削除</button>
+      </span>
+    </div>
+  `).join('');
+}
+
+async function addStoreFromInput(cid) {
+  const name  = (document.getElementById('nsName')?.value || '').trim();
+  const color = document.getElementById('nsColor')?.value || '#94a3b8';
+  if (!name) { toast('支店名を入力してください', 'error'); return; }
+  try {
+    await api._fetch('/api/stores', { method:'POST', body: JSON.stringify({ name, color, companyId: cid }) });
+    document.getElementById('nsName').value = '';
+    await renderStoreMgmtList(cid);
+    toast(`「${name}」を追加しました`);
+  } catch(e) { toast(e.message, 'error'); }
+}
+
+function startEditStore(id) {
+  document.getElementById(`smname-${id}`).style.display = 'none';
+  const el = document.getElementById(`smedit-${id}`);
+  el.style.display = 'flex'; el.style.flex = '1';
+  document.getElementById(`smbtn-edit-${id}`).style.display = 'none';
+  document.getElementById(`smbtn-save-${id}`).style.display = '';
+  document.getElementById(`sminput-${id}`)?.focus();
+}
+
+async function saveEditStore(id, cid) {
+  const name  = (document.getElementById(`sminput-${id}`)?.value || '').trim();
+  const color = document.getElementById(`smcolor-${id}`)?.value || '#94a3b8';
+  if (!name) { toast('支店名を入力してください', 'error'); return; }
+  try {
+    await api._fetch(`/api/stores/${id}`, { method:'PUT', body: JSON.stringify({ name, color, companyId: cid }) });
+    await renderStoreMgmtList(cid);
+    toast('更新しました');
+  } catch(e) { toast(e.message, 'error'); }
+}
+
+async function deleteStoreUI(id, name, cid) {
+  if (!confirm(`「${name}」を削除しますか？\n予約データは残ります。`)) return;
+  await api._fetch(`/api/stores/${id}`, { method:'DELETE' });
+  _storesCache = _storesCache.filter(s => s.id !== id);
+  await renderStoreMgmtList(cid);
+  toast(`「${name}」を削除しました`);
+}
+
+// ─── 支店 select options ───────────────────────────────────
+function storeOptionsFromDB(current) {
+  return _storesCache.map(s =>
+    `<option value="${esc(s.name)}"${s.name === current ? ' selected' : ''}>${esc(s.name)}</option>`
+  ).join('');
+}
+
+function logout() {
+  const f = document.createElement('form');
+  f.method = 'POST';
+  f.action = '/api/auth/logout';
+  document.body.appendChild(f);
+  f.submit();
+}
+
+document.addEventListener('DOMContentLoaded', async () => {
+  // 認証チェック
+  const auth = await fetch('/api/auth/check').then(r => r.json()).catch(() => ({ loggedIn: false }));
+  if (!auth.loggedIn) { window.location.href = '/login.html'; return; }
+
+  applyTheme(localStorage.getItem('theme') || 'dark');
+  showLanding();
 });

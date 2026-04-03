@@ -9,7 +9,23 @@
 </head>
 <body>
 
-<div class="app">
+<!-- ═══ STORE LANDING ════════════════════════════════════ -->
+<div class="store-landing" id="storeLanding">
+  <div class="sl-header">
+    <div class="sl-logo">💼</div>
+    <h1 class="sl-title">予約管理システム</h1>
+    <p class="sl-sub">店舗を選択してください</p>
+  </div>
+  <div class="sl-cards" id="slCards">
+    <div class="loading-wrap"><div class="spinner"></div></div>
+  </div>
+  <div class="sl-footer">
+    <button class="btn btn-secondary" onclick="openCompanyManager()">🏢 会社管理</button>
+    <button class="btn btn-secondary" onclick="selectCompany(null)">🌐 全会社で表示</button>
+  </div>
+</div>
+
+<div class="app" id="mainApp" style="display:none">
 
   <!-- Sidebar overlay (mobile tap-to-close) -->
   <div class="sidebar-overlay" id="sidebarOverlay" onclick="closeSidebar()"></div>
@@ -43,8 +59,17 @@
         <span class="nav-icon">📊</span><span>集計・分析</span>
       </button>
       <div class="nav-section-label">設定</div>
+      <button class="nav-item" onclick="openBranchSelector()">
+        <span class="nav-icon">🏪</span><span>支店を切替</span>
+      </button>
+      <button class="nav-item" onclick="openStoreManager()">
+        <span class="nav-icon">⚙️</span><span>支店管理</span>
+      </button>
       <button class="nav-item" onclick="openOperatorManager()">
         <span class="nav-icon">👤</span><span>担当者管理</span>
+      </button>
+      <button class="nav-item" onclick="logout()" style="color:#f87171;margin-top:8px">
+        <span class="nav-icon">🚪</span><span>ログアウト</span>
       </button>
     </nav>
 
@@ -58,7 +83,13 @@
       <button class="hamburger" id="hamburger" onclick="toggleSidebar()">
         <span></span><span></span><span></span>
       </button>
-      <div class="topbar-title" id="topbarTitle">ダッシュボード</div>
+      <div class="topbar-center">
+        <button class="store-selector-btn" id="storeSelectorBtn" onclick="goToLanding()">
+          <span id="storeSelectorLabel">全店舗</span>
+          <span class="store-selector-arrow">▾</span>
+        </button>
+        <div class="topbar-title" id="topbarTitle">ダッシュボード</div>
+      </div>
       <div class="topbar-right">
         <button class="theme-toggle" id="themeToggle" onclick="toggleTheme()" title="テーマ切替">🌙</button>
         <button class="btn btn-primary btn-sm" onclick="navigate('register')">＋ 新規登録</button>

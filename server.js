@@ -1,25 +1,128 @@
 require('dotenv').config();
-const express = require('express');
-const path    = require('path');
-const db      = require('./storage');
+
+// SESSION_SECRET が未設定の場合は起動を拒否
+if (!process.env.SESSION_SECRET) {
+  console.error('[起動エラー] SESSION_SECRET が .env に設定されていません');
+  process.exit(1);
+}
+
+const express   = require('express');
+const session   = require('express-session');
+const helmet    = require('helmet');
+const rateLimit = require('express-rate-limit');
+const path      = require('path');
+const db        = require('./storage');
 
 const app  = express();
 const PORT = parseInt(process.env.PORT) || 3636;
+const isProd = process.env.NODE_ENV === 'production';
 
-app.use(express.json());
+// ─── セキュリティヘッダー ──────────────────────────────────
+app.use(helmet({
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      scriptSrc:     ["'self'", "'unsafe-inline'", "https://cdn.jsdelivr.net"],
+      scriptSrcAttr: ["'unsafe-inline'"], // onclick等のインラインハンドラーを許可
+      styleSrc:      ["'self'", "'unsafe-inline'"],
+      imgSrc:     ["'self'", "data:"],
+      connectSrc: ["'self'"],
+      upgradeInsecureRequests: isProd ? [] : null, // HTTP環境では無効
+    },
+  },
+  hsts: isProd, // HTTPS環境のみ有効
+}));
+
+app.use(express.json({ limit: '100kb' }));
+
+// ─── セッション ────────────────────────────────────────────
+app.use(session({
+  secret: process.env.SESSION_SECRET,
+  resave: false,
+  saveUninitialized: false,
+  cookie: {
+    httpOnly: true,
+    sameSite: 'strict',            // CSRF 対策
+    secure: isProd,                // 本番のみ HTTPS 必須
+    maxAge: 8 * 60 * 60 * 1000,   // 8時間
+  },
+}));
+
+// ─── ログインレート制限 ────────────────────────────────────
+const loginLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 10,
+  message: { error: 'ログイン試行が多すぎます。15分後に再試行してください' },
+  standardHeaders: true,
+  legacyHeaders: false,
+  validate: { trustProxy: false, xForwardedForHeader: false },
+});
+
+// ─── 認証 ─────────────────────────────────────────────────
+// フォーム送信用（application/x-www-form-urlencoded）
+app.use(express.urlencoded({ extended: false }));
+
+app.post('/auth/login', loginLimiter, (req, res) => {
+  const { user, pass } = req.body;
+  if (
+    typeof user === 'string' && typeof pass === 'string' &&
+    user === process.env.ADMIN_USER && pass === process.env.ADMIN_PASS
+  ) {
+    req.session.loggedIn = true;
+    req.session.save(err => {
+      if (err) { console.error('[Login] session save error:', err); return res.redirect('/login.html?error=1'); }
+      res.redirect('/');
+    });
+  } else {
+    res.redirect('/login.html?error=1');
+  }
+});
+
+app.post('/api/auth/logout', (req, res) => {
+  req.session.destroy(() => res.redirect('/login.html'));
+});
+
+app.post('/api/auth/logout', (req, res) => {
+  req.session.destroy(() => res.json({ ok: true }));
+});
+
+app.get('/api/auth/check', (req, res) => {
+  res.json({ loggedIn: !!req.session.loggedIn });
+});
+
+// ─── API 認証ミドルウェア ──────────────────────────────────
+const requireAuth = (req, res, next) => {
+  if (req.session.loggedIn) return next();
+  res.status(401).json({ error: 'ログインが必要です' });
+};
+
+app.use('/api', requireAuth);
+
 app.use(express.static(path.join(__dirname, 'public')));
 
-// async エラーハンドラー
+// ─── async エラーハンドラー ────────────────────────────────
 const wrap = fn => async (req, res) => {
   try { await fn(req, res); }
-  catch (e) { console.error('[API Error]', e.message); res.status(500).json({ error: e.message }); }
+  catch (e) {
+    console.error('[API Error]', e.message);
+    res.status(500).json({ error: 'サーバーエラーが発生しました' }); // 詳細はクライアントに返さない
+  }
 };
+
+// ─── クエリパラメータのバリデーション ─────────────────────
+function validYear(v)  { const n = parseInt(v); return n >= 2000 && n <= 2100 ? n : null; }
+function validMonth(v) { const n = parseInt(v); return n >= 1    && n <= 12   ? n : null; }
+function validId(v)    { const n = parseInt(v); return n > 0 ? n : null; }
 
 // ─── BOOKINGS ─────────────────────────────────────────────
 
 app.get('/api/bookings', wrap(async (req, res) => {
-  const { year, month } = req.query;
-  res.json(await db.getBookings(year, month));
+  const { company_id, branch } = req.query;
+  const year  = validYear(req.query.year);
+  const month = validMonth(req.query.month);
+  if (req.query.year && !year)   return res.status(400).json({ error: '年が無効です' });
+  if (req.query.month && !month) return res.status(400).json({ error: '月が無効です' });
+  res.json(await db.getBookings(year, month, company_id, branch));
 }));
 
 app.post('/api/bookings', wrap(async (req, res) => {
@@ -27,21 +130,28 @@ app.post('/api/bookings', wrap(async (req, res) => {
 }));
 
 app.put('/api/bookings/:id', wrap(async (req, res) => {
-  const updated = await db.updateBooking(parseInt(req.params.id), req.body);
+  const id = validId(req.params.id);
+  if (!id) return res.status(400).json({ error: 'IDが無効です' });
+  const updated = await db.updateBooking(id, req.body);
   if (!updated) return res.status(404).json({ error: 'Not found' });
   res.json(updated);
 }));
 
 app.delete('/api/bookings/:id', wrap(async (req, res) => {
-  await db.deleteBooking(parseInt(req.params.id));
+  const id = validId(req.params.id);
+  if (!id) return res.status(400).json({ error: 'IDが無効です' });
+  await db.deleteBooking(id);
   res.json({ ok: true });
 }));
 
 // ─── DASHBOARD ────────────────────────────────────────────
 
 app.get('/api/dashboard', wrap(async (req, res) => {
-  const { year, month } = req.query;
-  res.json(await db.getDashboard(year, month));
+  const { company_id, branch } = req.query;
+  const year  = validYear(req.query.year);
+  const month = validMonth(req.query.month);
+  if (!year || !month) return res.status(400).json({ error: '年月が無効です' });
+  res.json(await db.getDashboard(year, month, company_id, branch));
 }));
 
 // ─── CUSTOMERS ────────────────────────────────────────────
@@ -54,11 +164,113 @@ app.get('/api/customers/bookings', wrap(async (req, res) => {
   res.json(await db.getCustomerBookings(req.query.name, req.query.account));
 }));
 
+// ─── OPERATORS ────────────────────────────────────────────
+
+app.get('/api/operators', wrap(async (req, res) => {
+  res.json(await db.getOperators());
+}));
+
+app.post('/api/operators', wrap(async (req, res) => {
+  const { name } = req.body;
+  if (!name?.trim()) return res.status(400).json({ error: '名前は必須です' });
+  try {
+    res.json(await db.insertOperator(name));
+  } catch (e) {
+    if (e.code === '23505') return res.status(409).json({ error: 'すでに登録されています' });
+    throw e;
+  }
+}));
+
+app.put('/api/operators/:id', wrap(async (req, res) => {
+  const id = validId(req.params.id);
+  if (!id) return res.status(400).json({ error: 'IDが無効です' });
+  const { name } = req.body;
+  if (!name?.trim()) return res.status(400).json({ error: '名前は必須です' });
+  try {
+    const row = await db.updateOperator(id, name);
+    if (!row) return res.status(404).json({ error: 'Not found' });
+    res.json(row);
+  } catch (e) {
+    if (e.code === '23505') return res.status(409).json({ error: 'すでに登録されています' });
+    throw e;
+  }
+}));
+
+app.delete('/api/operators/:id', wrap(async (req, res) => {
+  const id = validId(req.params.id);
+  if (!id) return res.status(400).json({ error: 'IDが無効です' });
+  await db.deleteOperator(id);
+  res.json({ ok: true });
+}));
+
 // ─── STATS ────────────────────────────────────────────────
 
 app.get('/api/stats', wrap(async (req, res) => {
-  const { year, month } = req.query;
-  res.json(await db.getStats(year, month));
+  const { company_id, branch } = req.query;
+  const year  = validYear(req.query.year);
+  const month = validMonth(req.query.month);
+  if (!year || !month) return res.status(400).json({ error: '年月が無効です' });
+  res.json(await db.getStats(year, month, company_id, branch));
+}));
+
+// ─── COMPANIES ────────────────────────────────────────────
+
+app.get('/api/companies', wrap(async (req, res) => {
+  res.json(await db.getCompanies());
+}));
+app.get('/api/companies/summary', wrap(async (req, res) => {
+  res.json(await db.getCompanySummary());
+}));
+app.post('/api/companies', wrap(async (req, res) => {
+  if (!req.body.name?.trim()) return res.status(400).json({ error: '会社名は必須です' });
+  try { res.json(await db.insertCompany(req.body)); }
+  catch (e) { if (e.code === '23505') return res.status(409).json({ error: 'すでに登録されています' }); throw e; }
+}));
+app.put('/api/companies/:id', wrap(async (req, res) => {
+  const id = validId(req.params.id);
+  if (!id) return res.status(400).json({ error: 'IDが無効です' });
+  if (!req.body.name?.trim()) return res.status(400).json({ error: '会社名は必須です' });
+  try {
+    const row = await db.updateCompany(id, req.body);
+    if (!row) return res.status(404).json({ error: 'Not found' });
+    res.json(row);
+  } catch (e) { if (e.code === '23505') return res.status(409).json({ error: 'すでに登録されています' }); throw e; }
+}));
+app.delete('/api/companies/:id', wrap(async (req, res) => {
+  const id = validId(req.params.id);
+  if (!id) return res.status(400).json({ error: 'IDが無効です' });
+  await db.deleteCompany(id);
+  res.json({ ok: true });
+}));
+
+// ─── STORES (支店) ─────────────────────────────────────────
+
+app.get('/api/stores', wrap(async (req, res) => {
+  res.json(await db.getStores(req.query.company_id));
+}));
+app.get('/api/stores/summary', wrap(async (req, res) => {
+  res.json(await db.getStoreSummary(req.query.company_id));
+}));
+app.post('/api/stores', wrap(async (req, res) => {
+  if (!req.body.name?.trim()) return res.status(400).json({ error: '支店名は必須です' });
+  try { res.json(await db.insertStore(req.body)); }
+  catch (e) { if (e.code === '23505') return res.status(409).json({ error: 'すでに登録されています' }); throw e; }
+}));
+app.put('/api/stores/:id', wrap(async (req, res) => {
+  const id = validId(req.params.id);
+  if (!id) return res.status(400).json({ error: 'IDが無効です' });
+  if (!req.body.name?.trim()) return res.status(400).json({ error: '支店名は必須です' });
+  try {
+    const row = await db.updateStore(id, req.body);
+    if (!row) return res.status(404).json({ error: 'Not found' });
+    res.json(row);
+  } catch (e) { if (e.code === '23505') return res.status(409).json({ error: 'すでに登録されています' }); throw e; }
+}));
+app.delete('/api/stores/:id', wrap(async (req, res) => {
+  const id = validId(req.params.id);
+  if (!id) return res.status(400).json({ error: 'IDが無効です' });
+  await db.deleteStore(id);
+  res.json({ ok: true });
 }));
 
 // ─── START ────────────────────────────────────────────────
