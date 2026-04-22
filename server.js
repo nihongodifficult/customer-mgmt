@@ -1,50 +1,66 @@
 require('dotenv').config();
 
-// SESSION_SECRET が未設定の場合は起動を拒否
-if (!process.env.SESSION_SECRET) {
-  console.error('[起動エラー] SESSION_SECRET が .env に設定されていません');
-  process.exit(1);
+// ─── 環境変数チェック ──────────────────────────────────────
+const REQUIRED_ENV = ['SESSION_SECRET', 'DATABASE_URL', 'ADMIN_USER', 'ADMIN_PASS'];
+for (const key of REQUIRED_ENV) {
+  if (!process.env[key]) {
+    console.error(`[起動エラー] ${key} が .env に設定されていません`);
+    process.exit(1);
+  }
 }
 
-const express   = require('express');
-const session   = require('express-session');
-const helmet    = require('helmet');
-const rateLimit = require('express-rate-limit');
-const path      = require('path');
-const db        = require('./storage');
+// ─── クラッシュハンドラー ──────────────────────────────────
+process.on('uncaughtException',  err  => { console.error('[FATAL] Uncaught exception:', err);  process.exit(1); });
+process.on('unhandledRejection', reason => { console.error('[FATAL] Unhandled rejection:', reason); process.exit(1); });
 
-const app  = express();
-const PORT = parseInt(process.env.PORT) || 3636;
+const express      = require('express');
+const session      = require('express-session');
+const pgSession    = require('connect-pg-simple')(session);
+const helmet       = require('helmet');
+const rateLimit    = require('express-rate-limit');
+const path         = require('path');
+const { Pool }     = require('pg');
+const db           = require('./storage');
+
+const app    = express();
+const PORT   = parseInt(process.env.PORT) || 3636;
 const isProd = process.env.NODE_ENV === 'production';
 
 // ─── セキュリティヘッダー ──────────────────────────────────
 app.use(helmet({
   contentSecurityPolicy: {
     directives: {
-      defaultSrc: ["'self'"],
+      defaultSrc:    ["'self'"],
       scriptSrc:     ["'self'", "'unsafe-inline'", "https://cdn.jsdelivr.net"],
-      scriptSrcAttr: ["'unsafe-inline'"], // onclick等のインラインハンドラーを許可
+      scriptSrcAttr: ["'unsafe-inline'"],
       styleSrc:      ["'self'", "'unsafe-inline'"],
-      imgSrc:     ["'self'", "data:"],
-      connectSrc: ["'self'"],
-      upgradeInsecureRequests: isProd ? [] : null, // HTTP環境では無効
+      imgSrc:        ["'self'", "data:"],
+      connectSrc:    ["'self'"],
+      upgradeInsecureRequests: isProd ? [] : null,
     },
   },
-  hsts: isProd, // HTTPS環境のみ有効
+  hsts: isProd,
 }));
 
 app.use(express.json({ limit: '100kb' }));
+app.use(express.urlencoded({ extended: false }));
 
-// ─── セッション ────────────────────────────────────────────
+// ─── セッション（PostgreSQL永続化） ───────────────────────
+const sessionPool = new Pool({ connectionString: process.env.DATABASE_URL, ssl: false });
 app.use(session({
+  store: new pgSession({
+    pool: sessionPool,
+    tableName: 'user_sessions',
+    createTableIfMissing: true,
+  }),
   secret: process.env.SESSION_SECRET,
   resave: false,
   saveUninitialized: false,
   cookie: {
     httpOnly: true,
-    sameSite: 'strict',            // CSRF 対策
-    secure: isProd,                // 本番のみ HTTPS 必須
-    maxAge: 8 * 60 * 60 * 1000,   // 8時間
+    sameSite: 'strict',
+    secure: isProd,
+    maxAge: 8 * 60 * 60 * 1000, // 8時間
   },
 }));
 
@@ -59,9 +75,6 @@ const loginLimiter = rateLimit({
 });
 
 // ─── 認証 ─────────────────────────────────────────────────
-// フォーム送信用（application/x-www-form-urlencoded）
-app.use(express.urlencoded({ extended: false }));
-
 app.post('/auth/login', loginLimiter, (req, res) => {
   const { user, pass } = req.body;
   if (
@@ -82,13 +95,12 @@ app.post('/api/auth/logout', (req, res) => {
   req.session.destroy(() => res.redirect('/login.html'));
 });
 
-app.post('/api/auth/logout', (req, res) => {
-  req.session.destroy(() => res.json({ ok: true }));
-});
-
 app.get('/api/auth/check', (req, res) => {
   res.json({ loggedIn: !!req.session.loggedIn });
 });
+
+// ─── ヘルスチェック ────────────────────────────────────────
+app.get('/health', (req, res) => res.json({ ok: true }));
 
 // ─── API 認証ミドルウェア ──────────────────────────────────
 const requireAuth = (req, res, next) => {
@@ -105,7 +117,7 @@ const wrap = fn => async (req, res) => {
   try { await fn(req, res); }
   catch (e) {
     console.error('[API Error]', e.message);
-    res.status(500).json({ error: 'サーバーエラーが発生しました' }); // 詳細はクライアントに返さない
+    res.status(500).json({ error: 'サーバーエラーが発生しました' });
   }
 };
 
@@ -275,33 +287,16 @@ app.delete('/api/stores/:id', wrap(async (req, res) => {
 
 // ─── START ────────────────────────────────────────────────
 
-const net = require('net');
-
-function findFreePort(start, cb) {
-  const srv = net.createServer();
-  srv.once('error', () => findFreePort(start + 1, cb));
-  srv.once('listening', () => { const p = srv.address().port; srv.close(() => cb(p)); });
-  srv.listen(start);
-}
-
 async function main() {
-  // DB 接続 & テーブル初期化
   await db.initDB();
-
-  findFreePort(PORT, (port) => {
-    app.listen(port, () => {
-      console.log(`\n✅  予約管理システム 起動中`);
-      console.log(`   → http://localhost:${port}\n`);
-      require('fs').writeFileSync(
-        require('path').join(__dirname, 'data', '.port'),
-        String(port)
-      );
-    });
+  const port = parseInt(process.env.PORT) || 3636;
+  app.listen(port, () => {
+    console.log(`\n✅  予約管理システム 起動中`);
+    console.log(`   → http://localhost:${port}\n`);
   });
 }
 
 main().catch(e => {
   console.error('\n[起動エラー]', e.message);
-  console.error('  .env の DATABASE_URL が正しいか確認してください。\n');
   process.exit(1);
 });
