@@ -26,6 +26,8 @@ const app    = express();
 const PORT   = parseInt(process.env.PORT) || 3636;
 const isProd = process.env.NODE_ENV === 'production';
 
+app.set('trust proxy', 1);
+
 // ─── セキュリティヘッダー ──────────────────────────────────
 app.use(helmet({
   contentSecurityPolicy: {
@@ -46,7 +48,12 @@ app.use(express.json({ limit: '100kb' }));
 app.use(express.urlencoded({ extended: false }));
 
 // ─── セッション（PostgreSQL永続化） ───────────────────────
-const sessionPool = new Pool({ connectionString: process.env.DATABASE_URL, ssl: false });
+const sessionPool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+  ssl: process.env.DATABASE_URL.includes('localhost') || process.env.DATABASE_URL.includes('127.0.0.1')
+    ? false
+    : { rejectUnauthorized: false },
+});
 app.use(session({
   store: new pgSession({
     pool: sessionPool,

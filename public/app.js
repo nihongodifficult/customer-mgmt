@@ -1323,7 +1323,12 @@ function toast(msg, type = 'success') {
 function applyTheme(theme) {
   document.documentElement.setAttribute('data-theme', theme);
   const btn = document.getElementById('themeToggle');
-  if (btn) btn.textContent = theme === 'light' ? '🌙' : '☀️';
+  if (btn) {
+    btn.innerHTML = theme === 'light'
+      ? '<i data-lucide="moon"></i>'
+      : '<i data-lucide="sun"></i>';
+    if (window.lucide) lucide.createIcons({ nodes: [btn] });
+  }
 }
 
 function toggleTheme() {
