@@ -225,10 +225,14 @@ async function getCustomers() {
 }
 
 async function getCustomerBookings(name, account) {
+  const acct = account || '';
   const { rows } = await pool.query(
-    `SELECT * FROM bookings WHERE customer_name=$1 AND account_name=$2 AND status != 'キャンセル'
+    `SELECT * FROM bookings
+     WHERE customer_name=$1
+       AND (account_name=$2 OR (($2='' ) AND (account_name IS NULL OR account_name='')))
+       AND status != 'キャンセル'
      ORDER BY contract_date DESC, booking_time DESC`,
-    [name, account ?? '']
+    [name, acct]
   );
   return rows;
 }
