@@ -808,8 +808,8 @@ async function renderCustomers() {
 
 function renderCustomerCards(list) {
   if (!list.length) return empty('お客様がいません');
-  return list.map((c, i) => `
-    <div class="ccard" onclick="showCustomerDetail(${i})">
+  return list.map((c) => `
+    <div class="ccard" onclick="showCustomerDetail(${_customers.indexOf(c)})">
       <div class="ccard-avatar">${avatar(c.customer_name)}</div>
       <div class="ccard-name">${esc(c.customer_name)}</div>
       ${c.account_name ? `<div class="ccard-account">@${esc(c.account_name)}</div>` : ''}
