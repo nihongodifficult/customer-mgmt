@@ -941,124 +941,383 @@ function printMonthlyReport() {
   if (!_statsCache) return;
   const { summary, byStore, byMedia, byNationality, trend, avgPerDay, label } = _statsCache;
 
-  const CHART_COLORS = [
-    '#7c3aed','#a78bfa','#6ee7b7','#93c5fd','#fca5a5',
-    '#fcd34d','#f9a8d4','#fb923c','#34d399','#60a5fa',
-  ];
+  const GOLD    = '#B8960C';
+  const GOLD_LT = '#D4AF37';
+  const COLORS  = ['#1a1a2e','#2d2d44','#B8960C','#8B6914','#4a4a6a','#6b6b8a','#c8a84b','#e8c96e','#3d3d5c','#D4AF37'];
 
-  const avgUnit = Math.round(summary.count ? summary.total / summary.count : 0);
+  const avgUnit  = Math.round(summary.count ? summary.total / summary.count : 0);
+  const today    = new Date().toLocaleDateString('ja-JP', { year:'numeric', month:'long', day:'numeric' });
+  const maxStore = byStore.reduce((m, r) => Math.max(m, Number(r.total)), 0);
 
   const storeRows = byStore.map((r, i) => {
-    const pct = summary.total ? Math.round(r.total / summary.total * 100) : 0;
-    const color = CHART_COLORS[i % CHART_COLORS.length];
+    const pct     = summary.total ? (r.total / summary.total * 100).toFixed(1) : '0.0';
+    const barPct  = maxStore ? Math.round(r.total / maxStore * 100) : 0;
+    const color   = COLORS[i % COLORS.length];
     return `<tr>
-      <td><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${color};margin-right:6px"></span>${r.name}</td>
-      <td style="text-align:right">${r.count}件</td>
-      <td style="text-align:right">¥${Number(r.total).toLocaleString()}</td>
-      <td style="text-align:right">${pct}%</td>
+      <td><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${color};margin-right:8px;vertical-align:middle"></span>${r.name}</td>
+      <td class="num">${Number(r.count).toLocaleString()}件</td>
+      <td class="num">¥${Number(r.total).toLocaleString()}</td>
+      <td class="num">${pct}%</td>
+      <td style="width:120px;padding-right:16px">
+        <div style="height:6px;background:#f0ece0;border-radius:3px">
+          <div style="height:6px;width:${barPct}%;background:linear-gradient(90deg,${GOLD},${GOLD_LT});border-radius:3px"></div>
+        </div>
+      </td>
     </tr>`;
   }).join('');
 
   const mediaRows = byMedia.map(r => `<tr>
-    <td>${r.name}</td>
-    <td style="text-align:right">${r.count}件</td>
-    <td style="text-align:right">¥${Number(r.total).toLocaleString()}</td>
+    <td>${r.name || '—'}</td>
+    <td class="num">${Number(r.count).toLocaleString()}件</td>
+    <td class="num">¥${Number(r.total).toLocaleString()}</td>
+    <td class="num">${summary.count ? (r.count/summary.count*100).toFixed(1) : 0}%</td>
+  </tr>`).join('');
+
+  const trendRows = trend.map(r => `<tr>
+    <td>${r.label}</td>
+    <td class="num">${Number(r.count).toLocaleString()}件</td>
+    <td class="num">¥${Number(r.total).toLocaleString()}</td>
+    <td class="num">¥${r.count ? Math.round(r.total/r.count).toLocaleString() : '—'}</td>
   </tr>`).join('');
 
   const natLabels = JSON.stringify(byNationality.map(r => r.name));
   const natData   = JSON.stringify(byNationality.map(r => Number(r.count)));
-  const natColors = JSON.stringify(byNationality.map((_, i) => CHART_COLORS[i % CHART_COLORS.length]));
-
-  const trendRows = trend.map(r => `<tr>
-    <td>${r.label}</td>
-    <td style="text-align:right">${r.count}件</td>
-    <td style="text-align:right">¥${Number(r.total).toLocaleString()}</td>
-  </tr>`).join('');
+  const natColors = JSON.stringify(byNationality.map((_, i) => COLORS[i % COLORS.length]));
 
   const html = `<!DOCTYPE html>
 <html lang="ja">
 <head>
 <meta charset="UTF-8">
-<title>月末レポート ${label}</title>
+<title>Monthly Report — ${label}</title>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></scr` + `ipt>
 <style>
-  * { box-sizing: border-box; margin: 0; padding: 0; }
-  body { font-family: 'Hiragino Kaku Gothic ProN', Meiryo, sans-serif; font-size: 13px; color: #1e1b4b; background: #fff; padding: 32px; }
-  h1 { font-size: 22px; font-weight: 700; margin-bottom: 4px; }
-  .subtitle { color: #6b7280; font-size: 13px; margin-bottom: 28px; }
-  .summary-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 28px; }
-  .summary-card { border: 1px solid #e5e7eb; border-radius: 10px; padding: 16px; text-align: center; }
-  .summary-card .val { font-size: 22px; font-weight: 700; color: #7c3aed; }
-  .summary-card .lbl { font-size: 11px; color: #6b7280; margin-top: 4px; }
-  .section { margin-bottom: 28px; }
-  .section-title { font-size: 14px; font-weight: 700; border-left: 3px solid #7c3aed; padding-left: 8px; margin-bottom: 12px; }
-  .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
-  table { width: 100%; border-collapse: collapse; font-size: 12px; }
-  th { background: #f5f3ff; color: #4b5563; font-weight: 600; padding: 6px 10px; text-align: left; border-bottom: 1px solid #e5e7eb; }
-  td { padding: 6px 10px; border-bottom: 1px solid #f3f4f6; }
-  .chart-wrap { display: flex; justify-content: center; }
-  canvas { max-width: 260px; max-height: 260px; }
+  @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700;900&display=swap');
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: 'Noto Sans JP', 'Hiragino Kaku Gothic ProN', Meiryo, sans-serif;
+    font-size: 12px;
+    color: #1a1208;
+    background: #fff;
+    padding: 0;
+  }
+
+  /* ── カバーヘッダー ── */
+  .cover {
+    background: #0e0e1a;
+    color: #fff;
+    padding: 40px 52px 36px;
+    position: relative;
+    overflow: hidden;
+  }
+  .cover::after {
+    content: '';
+    position: absolute;
+    bottom: 0; left: 0; right: 0;
+    height: 3px;
+    background: linear-gradient(90deg, ${GOLD}, ${GOLD_LT}, ${GOLD});
+  }
+  .cover-top {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 28px;
+  }
+  .cover-brand {
+    font-size: 28px;
+    font-weight: 900;
+    letter-spacing: .06em;
+    color: ${GOLD_LT};
+  }
+  .cover-meta {
+    text-align: right;
+    font-size: 11px;
+    color: rgba(255,255,255,.5);
+    line-height: 1.8;
+  }
+  .cover-title {
+    font-size: 13px;
+    font-weight: 500;
+    color: rgba(255,255,255,.5);
+    letter-spacing: .15em;
+    text-transform: uppercase;
+    margin-bottom: 8px;
+  }
+  .cover-period {
+    font-size: 38px;
+    font-weight: 900;
+    color: #fff;
+    letter-spacing: -.02em;
+    line-height: 1;
+  }
+  .cover-period span { color: ${GOLD_LT}; }
+
+  /* ── ページ本文 ── */
+  .page { padding: 40px 52px; }
+
+  /* ── KPIグリッド ── */
+  .kpi-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 1px;
+    background: #e8e0d0;
+    border: 1px solid #e8e0d0;
+    border-radius: 10px;
+    overflow: hidden;
+    margin-bottom: 36px;
+  }
+  .kpi {
+    background: #fff;
+    padding: 20px 18px;
+    text-align: center;
+  }
+  .kpi-label {
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: .1em;
+    color: #9c8c6a;
+    margin-bottom: 8px;
+  }
+  .kpi-value {
+    font-size: 26px;
+    font-weight: 900;
+    color: #1a1208;
+    line-height: 1;
+    margin-bottom: 4px;
+  }
+  .kpi-value.gold { color: ${GOLD}; }
+  .kpi-sub { font-size: 10px; color: #9c8c6a; }
+
+  /* ── セクション ── */
+  .section { margin-bottom: 36px; }
+  .section-head {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 14px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid #e8e0d0;
+  }
+  .section-head::before {
+    content: '';
+    display: block;
+    width: 4px;
+    height: 18px;
+    background: linear-gradient(180deg, ${GOLD}, ${GOLD_LT});
+    border-radius: 2px;
+    flex-shrink: 0;
+  }
+  .section-title {
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: .04em;
+    color: #1a1208;
+  }
+  .section-sub { font-size: 11px; color: #9c8c6a; margin-left: auto; }
+
+  /* ── テーブル ── */
+  table { width: 100%; border-collapse: collapse; }
+  thead tr { background: #faf7f0; }
+  th {
+    padding: 9px 14px;
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: .08em;
+    color: #6b5c3a;
+    text-align: left;
+    border-bottom: 2px solid #e8e0d0;
+  }
+  tbody tr { transition: background .1s; }
+  tbody tr:nth-child(even) { background: #fdfaf4; }
+  td {
+    padding: 10px 14px;
+    border-bottom: 1px solid #f0ece0;
+    vertical-align: middle;
+    font-size: 12px;
+  }
+  .num { text-align: right; font-variant-numeric: tabular-nums; font-weight: 500; }
+  tbody tr:last-child td { border-bottom: none; }
+  tfoot td {
+    padding: 10px 14px;
+    font-weight: 700;
+    border-top: 2px solid #e8e0d0;
+    background: #faf7f0;
+    font-size: 12px;
+  }
+
+  /* ── 2カラム ── */
+  .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 28px; }
+
+  /* ── チャート ── */
+  .chart-box {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 12px 0;
+  }
+  canvas { max-width: 220px; max-height: 220px; }
+
+  /* ── フッター ── */
+  .footer {
+    margin-top: 48px;
+    padding-top: 16px;
+    border-top: 1px solid #e8e0d0;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 10px;
+    color: #9c8c6a;
+  }
+  .footer-brand { font-weight: 700; color: ${GOLD}; letter-spacing: .08em; }
+
+  /* ── 印刷 ── */
   @media print {
-    body { padding: 16px; }
-    button { display: none; }
+    @page { margin: 0; size: A4; }
+    .cover { padding: 32px 40px 28px; }
+    .page  { padding: 28px 40px; }
+    .no-print { display: none !important; }
   }
 </style>
 </head>
 <body>
-<h1>月末レポート</h1>
-<div class="subtitle">${label} 集計</div>
 
-<div class="summary-grid">
-  <div class="summary-card"><div class="val">${summary.count}</div><div class="lbl">成約件数</div></div>
-  <div class="summary-card"><div class="val" style="font-size:16px">¥${Number(summary.total).toLocaleString()}</div><div class="lbl">合計売上</div></div>
-  <div class="summary-card"><div class="val" style="font-size:16px">¥${avgUnit.toLocaleString()}</div><div class="lbl">平均単価</div></div>
-  <div class="summary-card"><div class="val">${avgPerDay}</div><div class="lbl">一日平均件数</div></div>
+<div class="cover">
+  <div class="cover-top">
+    <div class="cover-brand">GREED</div>
+    <div class="cover-meta">
+      <div>作成日: ${today}</div>
+      <div>GREED 予約管理システム</div>
+    </div>
+  </div>
+  <div class="cover-title">Monthly Performance Report</div>
+  <div class="cover-period">${label.replace('年', '<span>年</span>').replace('月', '<span>月</span>')}</div>
 </div>
 
-<div class="section">
-  <div class="section-title">店舗別</div>
-  <table>
-    <thead><tr><th>店舗</th><th style="text-align:right">件数</th><th style="text-align:right">売上</th><th style="text-align:right">割合</th></tr></thead>
-    <tbody>${storeRows}</tbody>
-  </table>
-</div>
+<div class="page">
 
-<div class="two-col">
+  <div class="kpi-grid">
+    <div class="kpi">
+      <div class="kpi-label">成約件数</div>
+      <div class="kpi-value">${Number(summary.count).toLocaleString()}</div>
+      <div class="kpi-sub">件</div>
+    </div>
+    <div class="kpi">
+      <div class="kpi-label">合計売上</div>
+      <div class="kpi-value gold" style="font-size:${summary.total >= 1000000 ? '20px' : '26px'}">¥${Number(summary.total).toLocaleString()}</div>
+      <div class="kpi-sub">キャンセル除く</div>
+    </div>
+    <div class="kpi">
+      <div class="kpi-label">平均単価</div>
+      <div class="kpi-value" style="font-size:${avgUnit >= 100000 ? '20px' : '26px'}">¥${Number(avgUnit).toLocaleString()}</div>
+      <div class="kpi-sub">1件あたり</div>
+    </div>
+    <div class="kpi">
+      <div class="kpi-label">一日平均</div>
+      <div class="kpi-value">${avgPerDay}</div>
+      <div class="kpi-sub">件 / 日</div>
+    </div>
+  </div>
+
   <div class="section">
-    <div class="section-title">媒体別</div>
+    <div class="section-head">
+      <div class="section-title">店舗別実績</div>
+      <div class="section-sub">Store Performance</div>
+    </div>
     <table>
-      <thead><tr><th>媒体</th><th style="text-align:right">件数</th><th style="text-align:right">売上</th></tr></thead>
-      <tbody>${mediaRows}</tbody>
+      <thead><tr>
+        <th>店舗名</th>
+        <th class="num">件数</th>
+        <th class="num">売上</th>
+        <th class="num">構成比</th>
+        <th style="width:130px">割合</th>
+      </tr></thead>
+      <tbody>${storeRows}</tbody>
+      <tfoot><tr>
+        <td>合計</td>
+        <td class="num">${Number(summary.count).toLocaleString()}件</td>
+        <td class="num">¥${Number(summary.total).toLocaleString()}</td>
+        <td class="num">100%</td>
+        <td></td>
+      </tr></tfoot>
     </table>
   </div>
-  <div class="section">
-    <div class="section-title">国籍別</div>
-    <div class="chart-wrap"><canvas id="natChart"></canvas></div>
-  </div>
-</div>
 
-<div class="section">
-  <div class="section-title">月別トレンド（直近6ヶ月）</div>
-  <table>
-    <thead><tr><th>月</th><th style="text-align:right">件数</th><th style="text-align:right">売上</th></tr></thead>
-    <tbody>${trendRows}</tbody>
-  </table>
+  <div class="two-col">
+    <div class="section">
+      <div class="section-head">
+        <div class="section-title">媒体別</div>
+        <div class="section-sub">By Media</div>
+      </div>
+      <table>
+        <thead><tr>
+          <th>媒体</th>
+          <th class="num">件数</th>
+          <th class="num">売上</th>
+          <th class="num">構成比</th>
+        </tr></thead>
+        <tbody>${mediaRows}</tbody>
+      </table>
+    </div>
+
+    <div class="section">
+      <div class="section-head">
+        <div class="section-title">国籍別</div>
+        <div class="section-sub">By Nationality</div>
+      </div>
+      <div class="chart-box">
+        <canvas id="natChart"></canvas>
+      </div>
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="section-head">
+      <div class="section-title">月次推移（直近6ヶ月）</div>
+      <div class="section-sub">Monthly Trend</div>
+    </div>
+    <table>
+      <thead><tr>
+        <th>月</th>
+        <th class="num">件数</th>
+        <th class="num">売上</th>
+        <th class="num">平均単価</th>
+      </tr></thead>
+      <tbody>${trendRows}</tbody>
+    </table>
+  </div>
+
+  <div class="footer">
+    <div><span class="footer-brand">GREED</span> — Confidential</div>
+    <div>本レポートは ${today} に自動生成されました</div>
+  </div>
+
 </div>
 
 <script>
 new Chart(document.getElementById('natChart'), {
-  type: 'pie',
+  type: 'doughnut',
   data: {
     labels: ${natLabels},
-    datasets: [{ data: ${natData}, backgroundColor: ${natColors}, borderWidth: 1 }]
+    datasets: [{
+      data: ${natData},
+      backgroundColor: ${natColors},
+      borderWidth: 2,
+      borderColor: '#fff',
+      hoverOffset: 6
+    }]
   },
   options: {
+    cutout: '55%',
     plugins: {
-      legend: { position: 'bottom', labels: { font: { size: 11 }, boxWidth: 12 } }
+      legend: {
+        position: 'bottom',
+        labels: { font: { size: 10, family: "'Noto Sans JP', sans-serif" }, boxWidth: 10, padding: 10 }
+      }
     }
   }
 });
-window.onload = () => setTimeout(() => window.print(), 800);
+setTimeout(() => window.print(), 1000);
 </scr` + `ipt>
 </body></html>`;
 
