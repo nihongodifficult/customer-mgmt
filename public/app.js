@@ -1081,10 +1081,10 @@ body{font-family:'Hiragino Kaku Gothic ProN','Hiragino Sans',Meiryo,'Yu Gothic U
 /* ── テーブル ── */
 .data-table{width:100%;border-collapse:collapse;}
 .data-table thead tr{background:#faf7f0;}
-.data-table th{padding:8px 12px;font-size:8pt;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:#6b5c3a;text-align:left;border-bottom:2px solid #e0d8c8;}
+.data-table th{padding:7px 10px;font-size:8pt;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:#6b5c3a;text-align:left;border-bottom:2px solid #e0d8c8;white-space:nowrap;}
 .data-table tbody tr:nth-child(even){background:#fdfaf4;}
-.data-table td{padding:8px 12px;border-bottom:1px solid #ede8dc;font-size:10pt;vertical-align:middle;}
-.data-table tfoot td{padding:8px 12px;font-weight:700;border-top:2px solid #e0d8c8;background:#faf7f0;font-size:10pt;}
+.data-table td{padding:7px 10px;border-bottom:1px solid #ede8dc;font-size:10pt;vertical-align:middle;white-space:nowrap;}
+.data-table tfoot td{padding:7px 10px;font-weight:700;border-top:2px solid #e0d8c8;background:#faf7f0;font-size:10pt;white-space:nowrap;}
 .num{text-align:right;}
 /* ── 2列レイアウト（tableで） ── */
 .two-col-table{width:100%;border-collapse:collapse;margin-bottom:28px;}

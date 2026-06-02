@@ -267,6 +267,14 @@ async function getStats(year, month, companyId, branch) {
         WHEN nationality ILIKE '%フィリピン%' OR nationality ILIKE '%Philippines%' THEN 'フィリピン'
         WHEN nationality ILIKE '%インドネシア%' OR nationality ILIKE '%Indonesia%' THEN 'インドネシア'
         WHEN nationality ILIKE '%スウェーデン%' OR nationality ILIKE '%Sweden%' THEN 'スウェーデン'
+        WHEN nationality ILIKE '%トルコ%' OR nationality ILIKE '%Turkey%' OR nationality ILIKE '%Türkiye%' THEN 'トルコ'
+        WHEN nationality ILIKE '%イスラエル%' OR nationality ILIKE '%Israel%' THEN 'イスラエル'
+        WHEN nationality ILIKE '%イタリア%' OR nationality ILIKE '%Italy%' THEN 'イタリア'
+        WHEN nationality ILIKE '%UAE%' OR nationality ILIKE '%ドバイ%' OR nationality ILIKE '%Dubai%' OR nationality ILIKE '%アラブ%' THEN 'UAE/ドバイ'
+        WHEN nationality ILIKE '%インド%' OR nationality ILIKE '%India%' THEN 'インド'
+        WHEN nationality ILIKE '%ベトナム%' OR nationality ILIKE '%Vietnam%' THEN 'ベトナム'
+        WHEN nationality ILIKE '%スペイン%' OR nationality ILIKE '%Spain%' THEN 'スペイン'
+        WHEN nationality ILIKE '%ロシア%' OR nationality ILIKE '%Russia%' THEN 'ロシア'
         WHEN nationality = '' OR nationality IS NULL THEN 'その他'
         ELSE nationality
       END as name,
