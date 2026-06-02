@@ -1162,6 +1162,13 @@ body{font-family:'Hiragino Kaku Gothic ProN','Hiragino Sans',Meiryo,'Yu Gothic U
 </div>
 
 <div class="section">
+  <div class="sec-head"><span class="sec-title">月別売上トレンド</span><span class="sec-sub">直近6ヶ月 / Monthly Sales Trend</span></div>
+  <div style="position:relative;height:180px;">
+    <canvas id="trendChart"></canvas>
+  </div>
+</div>
+
+<div class="section">
   <div class="sec-head"><span class="sec-title">店舗別実績</span><span class="sec-sub">Store Performance</span></div>
   <table class="data-table">
     <thead><tr><th>店舗名</th><th class="num">件数</th><th class="num">売上</th><th class="num">構成比</th><th style="width:110pt">売上割合</th></tr></thead>
@@ -1213,6 +1220,28 @@ body{font-family:'Hiragino Kaku Gothic ProN','Hiragino Sans',Meiryo,'Yu Gothic U
 </div>
 
 <script>
+new Chart(document.getElementById('trendChart'),{
+  type:'bar',
+  data:{
+    labels:${JSON.stringify(trend.map(r=>r.label))},
+    datasets:[{
+      data:${JSON.stringify(trend.map(r=>r.total))},
+      backgroundColor: ${JSON.stringify(trend.map((r,i)=> i===trend.length-1 ? '#B8960C' : 'rgba(184,150,12,0.35)'))},
+      borderColor: ${JSON.stringify(trend.map((r,i)=> i===trend.length-1 ? '#9A7A08' : 'rgba(184,150,12,0.6)'))},
+      borderWidth:1,
+      borderRadius:4
+    }]
+  },
+  options:{
+    responsive:true,
+    maintainAspectRatio:false,
+    plugins:{legend:{display:false},tooltip:{callbacks:{label:ctx=>'¥'+Number(ctx.raw).toLocaleString()}}},
+    scales:{
+      y:{ticks:{callback:v=>v>=10000?Math.round(v/10000)+'万':'¥'+v.toLocaleString(),font:{size:9}},grid:{color:'rgba(0,0,0,0.06)'}},
+      x:{ticks:{font:{size:10}},grid:{display:false}}
+    }
+  }
+});
 new Chart(document.getElementById('natChart'),{
   type:'doughnut',
   data:{labels:${natLabels},datasets:[{data:${natData},backgroundColor:${natColors},borderWidth:2,borderColor:'#fff'}]},
