@@ -1015,13 +1015,6 @@ async function printMonthlyReport() {
     + '<td class="num">' + (summary.count ? (r.count/summary.count*100).toFixed(1) : 0) + '%</td></tr>'
   ).join('');
 
-  const natRows = byNationality.map((r, i) => {
-    const pct = natTotal ? (Number(r.count)/natTotal*100).toFixed(1) : '0.0';
-    const col = COLORS[i % COLORS.length];
-    return '<tr><td><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:' + col + ';margin-right:6px;vertical-align:middle"></span>' + (r.name||'—') + '</td>'
-      + '<td class="num">' + Number(r.count).toLocaleString() + '件</td>'
-      + '<td class="num">' + pct + '%</td></tr>';
-  }).join('');
 
   const trendRows = trend.map(r =>
     '<tr><td>' + r.label + '</td>'
@@ -1030,9 +1023,24 @@ async function printMonthlyReport() {
     + '<td class="num">¥' + (r.count ? Math.round(r.total/r.count).toLocaleString() : '—') + '</td></tr>'
   ).join('');
 
-  const natLabels = JSON.stringify(byNationality.map(r => r.name + ' ' + (natTotal ? (r.count/natTotal*100).toFixed(0) : 0) + '%'));
-  const natData   = JSON.stringify(byNationality.map(r => Number(r.count)));
-  const natColors = JSON.stringify(byNationality.map((_, i) => COLORS[i % COLORS.length]));
+  // 上位8か国 + その他に集約
+  const TOP_N = 8;
+  const sortedNat  = [...byNationality].sort((a,b) => Number(b.count)-Number(a.count));
+  const topNats    = sortedNat.slice(0, TOP_N);
+  const otherCount = sortedNat.slice(TOP_N).reduce((s,r) => s+Number(r.count), 0);
+  const displayNat = otherCount > 0 ? [...topNats, {name:'その他', count: otherCount}] : topNats;
+
+  const natLabels = JSON.stringify(displayNat.map(r => r.name + ' ' + (natTotal ? (r.count/natTotal*100).toFixed(0) : 0) + '%'));
+  const natData   = JSON.stringify(displayNat.map(r => Number(r.count)));
+  const natColors = JSON.stringify(displayNat.map((_, i) => COLORS[i % COLORS.length]));
+
+  const natRows = displayNat.map((r, i) => {
+    const pct = natTotal ? (Number(r.count)/natTotal*100).toFixed(1) : '0.0';
+    const col = COLORS[i % COLORS.length];
+    return '<tr><td><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:' + col + ';margin-right:6px;vertical-align:middle"></span>' + (r.name||'—') + '</td>'
+      + '<td class="num">' + Number(r.count).toLocaleString() + '件</td>'
+      + '<td class="num">' + pct + '%</td></tr>';
+  }).join('');
 
   const prevCountHTML = prev ? ('<div style="font-size:10px;color:#9c8c6a;margin-top:4px">前月 ' + Number(prev.count).toLocaleString() + '件 &nbsp;' + mom(summary.count, prev.count) + '</div>') : '';
   const prevTotalHTML = prev ? ('<div style="font-size:10px;color:#9c8c6a;margin-top:4px">前月 ¥' + Number(prev.total).toLocaleString() + ' &nbsp;' + mom(summary.total, prev.total) + '</div>') : '';
@@ -1086,13 +1094,12 @@ body{font-family:'Hiragino Kaku Gothic ProN','Hiragino Sans',Meiryo,'Yu Gothic U
 .data-table td{padding:7px 10px;border-bottom:1px solid #ede8dc;font-size:10pt;vertical-align:middle;white-space:nowrap;}
 .data-table tfoot td{padding:7px 10px;font-weight:700;border-top:2px solid #e0d8c8;background:#faf7f0;font-size:10pt;white-space:nowrap;}
 .num{text-align:right;}
-/* ── 2列レイアウト（tableで） ── */
+/* ── 2列レイアウト ── */
 .two-col-table{width:100%;border-collapse:collapse;margin-bottom:28px;}
-.two-col-table .col-left{width:58%;vertical-align:top;padding-right:20px;}
-.two-col-table .col-right{width:42%;vertical-align:top;padding-left:20px;border-left:1px solid #e0d8c8;}
+.two-col-table .col-left{width:55%;vertical-align:top;padding-right:20px;}
+.two-col-table .col-right{width:45%;vertical-align:top;padding-left:20px;border-left:1px solid #e0d8c8;}
 /* ── チャート ── */
-.chart-wrap{text-align:center;padding:6px 0;}
-.chart-wrap canvas{width:180px!important;height:180px!important;}
+.chart-wrap{text-align:center;padding:4px 0;}
 /* ── フッター ── */
 .footer{margin-top:32px;padding-top:12px;border-top:1px solid #e0d8c8;}
 .footer table{width:100%;border-collapse:collapse;}
@@ -1172,6 +1179,8 @@ body{font-family:'Hiragino Kaku Gothic ProN','Hiragino Sans',Meiryo,'Yu Gothic U
         <tbody>${mediaRows}</tbody>
       </table>
     </div>
+  </td>
+  <td class="col-right">
     <div class="section">
       <div class="sec-head"><span class="sec-title">月次推移（直近6ヶ月）</span><span class="sec-sub">Monthly Trend</span></div>
       <table class="data-table">
@@ -1180,17 +1189,24 @@ body{font-family:'Hiragino Kaku Gothic ProN','Hiragino Sans',Meiryo,'Yu Gothic U
       </table>
     </div>
   </td>
-  <td class="col-right">
-    <div class="section">
-      <div class="sec-head"><span class="sec-title">国籍別</span><span class="sec-sub">By Nationality</span></div>
-      <div class="chart-wrap"><canvas id="natChart" width="180" height="180"></canvas></div>
-      <table class="data-table" style="margin-top:10px">
-        <thead><tr><th>国籍</th><th class="num">件数</th><th class="num">構成比</th></tr></thead>
-        <tbody>${natRows}</tbody>
-      </table>
-    </div>
-  </td>
 </tr></table>
+
+<div class="section">
+  <div class="sec-head"><span class="sec-title">国籍別</span><span class="sec-sub">By Nationality — 上位${TOP_N}か国 + その他</span></div>
+  <table style="width:100%;border-collapse:collapse;">
+    <tr>
+      <td style="width:220px;vertical-align:middle;text-align:center;padding-right:24px;">
+        <canvas id="natChart" width="200" height="200"></canvas>
+      </td>
+      <td style="vertical-align:top;padding-left:8px;">
+        <table class="data-table">
+          <thead><tr><th>国籍</th><th class="num">件数</th><th class="num">構成比</th></tr></thead>
+          <tbody>${natRows}</tbody>
+        </table>
+      </td>
+    </tr>
+  </table>
+</div>
 
 <div class="footer">
   <table><tr>
