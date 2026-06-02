@@ -1170,26 +1170,21 @@ body{font-family:'Hiragino Kaku Gothic ProN','Hiragino Sans',Meiryo,'Yu Gothic U
   </table>
 </div>
 
-<table class="two-col-table"><tr>
-  <td class="col-left">
-    <div class="section">
-      <div class="sec-head"><span class="sec-title">媒体別</span><span class="sec-sub">By Media</span></div>
-      <table class="data-table">
-        <thead><tr><th>媒体</th><th class="num">件数</th><th class="num">売上</th><th class="num">構成比</th></tr></thead>
-        <tbody>${mediaRows}</tbody>
-      </table>
-    </div>
-  </td>
-  <td class="col-right">
-    <div class="section">
-      <div class="sec-head"><span class="sec-title">月次推移（直近6ヶ月）</span><span class="sec-sub">Monthly Trend</span></div>
-      <table class="data-table">
-        <thead><tr><th>月</th><th class="num">件数</th><th class="num">売上</th><th class="num">平均単価</th></tr></thead>
-        <tbody>${trendRows}</tbody>
-      </table>
-    </div>
-  </td>
-</tr></table>
+<div class="section">
+  <div class="sec-head"><span class="sec-title">媒体別</span><span class="sec-sub">By Media</span></div>
+  <table class="data-table">
+    <thead><tr><th>媒体</th><th class="num">件数</th><th class="num">売上</th><th class="num">構成比</th></tr></thead>
+    <tbody>${mediaRows}</tbody>
+  </table>
+</div>
+
+<div class="section">
+  <div class="sec-head"><span class="sec-title">月次推移（直近6ヶ月）</span><span class="sec-sub">Monthly Trend</span></div>
+  <table class="data-table">
+    <thead><tr><th>月</th><th class="num">件数</th><th class="num">売上</th><th class="num">平均単価</th></tr></thead>
+    <tbody>${trendRows}</tbody>
+  </table>
+</div>
 
 <div class="section" style="page-break-before:always;padding-top:32px;">
   <div class="sec-head"><span class="sec-title">国籍別</span><span class="sec-sub">By Nationality — 上位${TOP_N}か国 + その他</span></div>
