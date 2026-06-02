@@ -247,14 +247,41 @@ async function getStats(year, month, companyId, branch) {
   const q2 = build(`SELECT cast_name as name, store_name, COUNT(*) as count, COALESCE(SUM(amount),0) as total FROM bookings WHERE contract_date LIKE $1 AND cast_name != '' AND status != 'キャンセル'`, [prefix]);
   const q3 = build(`SELECT store_name as name, COUNT(*) as count, COALESCE(SUM(amount),0) as total FROM bookings WHERE contract_date LIKE $1 AND store_name != '' AND status != 'キャンセル'`, [prefix]);
   const q4 = build(`SELECT media as name, COUNT(*) as count, COALESCE(SUM(amount),0) as total FROM bookings WHERE contract_date LIKE $1 AND media != '' AND status != 'キャンセル'`, [prefix]);
-  const q5 = build(`SELECT nationality as name, COUNT(*) as count FROM bookings WHERE contract_date LIKE $1 AND nationality != '' AND status != 'キャンセル'`, [prefix]);
+  // 国籍は正規化してグループ化
+  const q5 = build(`
+    SELECT
+      CASE
+        WHEN nationality ILIKE '%アメリカ%' OR nationality ILIKE '%USA%' OR nationality ILIKE '%米国%' THEN 'アメリカ'
+        WHEN nationality ILIKE '%中国%' OR nationality ILIKE '%China%' THEN '中国'
+        WHEN nationality ILIKE '%韓国%' OR nationality ILIKE '%Korea%' THEN '韓国'
+        WHEN nationality ILIKE '%台湾%' OR nationality ILIKE '%Taiwan%' THEN '台湾'
+        WHEN nationality ILIKE '%香港%' OR nationality ILIKE '%HongKong%' OR nationality ILIKE '%Hong Kong%' THEN '香港'
+        WHEN nationality ILIKE '%イギリス%' OR nationality ILIKE '%UK%' OR nationality ILIKE '%英国%' THEN 'イギリス'
+        WHEN nationality ILIKE '%オーストラリア%' OR nationality ILIKE '%Australia%' THEN 'オーストラリア'
+        WHEN nationality ILIKE '%シンガポール%' OR nationality ILIKE '%Singapore%' THEN 'シンガポール'
+        WHEN nationality ILIKE '%マレーシア%' OR nationality ILIKE '%Malaysia%' THEN 'マレーシア'
+        WHEN nationality ILIKE '%カナダ%' OR nationality ILIKE '%Canada%' THEN 'カナダ'
+        WHEN nationality ILIKE '%フランス%' OR nationality ILIKE '%France%' THEN 'フランス'
+        WHEN nationality ILIKE '%ドイツ%' OR nationality ILIKE '%Germany%' THEN 'ドイツ'
+        WHEN nationality ILIKE '%タイ%' OR nationality ILIKE '%Thailand%' THEN 'タイ'
+        WHEN nationality ILIKE '%フィリピン%' OR nationality ILIKE '%Philippines%' THEN 'フィリピン'
+        WHEN nationality ILIKE '%インドネシア%' OR nationality ILIKE '%Indonesia%' THEN 'インドネシア'
+        WHEN nationality ILIKE '%スウェーデン%' OR nationality ILIKE '%Sweden%' THEN 'スウェーデン'
+        WHEN nationality = '' OR nationality IS NULL THEN 'その他'
+        ELSE nationality
+      END as name,
+      COUNT(*) as count
+    FROM bookings
+    WHERE contract_date LIKE $1 AND nationality != '' AND status != 'キャンセル'`,
+    [prefix]
+  );
 
   const [sumRes, castRes, storeRes, mediaRes, natRes] = await Promise.all([
     pool.query(q1.sql, q1.params),
     pool.query(q2.sql + ' GROUP BY cast_name, store_name ORDER BY count DESC', q2.params),
     pool.query(q3.sql + ' GROUP BY store_name ORDER BY count DESC', q3.params),
     pool.query(q4.sql + ' GROUP BY media ORDER BY count DESC', q4.params),
-    pool.query(q5.sql + ' GROUP BY nationality ORDER BY count DESC', q5.params),
+    pool.query(q5.sql + ' GROUP BY name ORDER BY count DESC', q5.params),
   ]);
 
   // 直近6ヶ月トレンド

@@ -1038,114 +1038,116 @@ async function printMonthlyReport() {
   const prevTotalHTML = prev ? ('<div style="font-size:10px;color:#9c8c6a;margin-top:4px">前月 ¥' + Number(prev.total).toLocaleString() + ' &nbsp;' + mom(summary.total, prev.total) + '</div>') : '';
   const prevAvgHTML   = prev && prev.count ? ('<div style="font-size:10px;color:#9c8c6a;margin-top:4px">前月 ¥' + Math.round(prev.total/prev.count).toLocaleString() + ' &nbsp;' + mom(avgUnit, Math.round(prev.total/prev.count)) + '</div>') : '';
 
-  const html = '<!DOCTYPE html>\n<html lang="ja">\n<head>\n<meta charset="UTF-8">\n<title>Monthly Report — ' + label + '</title>\n'
-    + '<script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"><\/script>\n'
-    + '<script src="https://cdn.jsdelivr.net/npm/html2pdf.js@0.10.1/dist/html2pdf.bundle.min.js"><\/script>\n'
-    + `<style>
-@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700;900&display=swap');
+  const html = `<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<title>Monthly Report — ${label}</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"><\/script>
+<style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
-body{font-family:'Noto Sans JP','Hiragino Kaku Gothic ProN',Meiryo,sans-serif;font-size:12px;color:#1a1208;background:#fff;}
-/* ── ツールバー ── */
-.toolbar{display:flex;align-items:center;justify-content:flex-end;gap:10px;padding:12px 52px;background:#faf7f0;border-bottom:1px solid #e8e0d0;}
-.tbtn{padding:8px 18px;border-radius:6px;border:1.5px solid #e8e0d0;background:#fff;font-size:12px;font-weight:700;cursor:pointer;color:#1a1208;font-family:inherit;}
-.tbtn.primary{background:linear-gradient(135deg,${GOLD},${GOLD_LT});border-color:${GOLD};color:#fff;}
-.tbtn:hover{opacity:.85;}
+body{font-family:'Hiragino Kaku Gothic ProN','Hiragino Sans',Meiryo,'Yu Gothic UI',sans-serif;font-size:11pt;color:#1a1208;background:#fff;-webkit-print-color-adjust:exact;print-color-adjust:exact;}
+/* ── ツールバー（画面のみ） ── */
+.toolbar{padding:10px 40px;background:#faf7f0;border-bottom:1px solid #e0d8c8;text-align:right;}
+.tbtn{padding:7px 20px;border-radius:5px;border:1.5px solid #c8b878;background:#fff;font-size:11px;font-weight:700;cursor:pointer;color:#1a1208;margin-left:8px;}
+.tbtn.primary{background:${GOLD};border-color:${GOLD};color:#fff;}
 /* ── カバー ── */
-.cover{background:#0e0e1a;color:#fff;padding:44px 52px 38px;position:relative;overflow:hidden;}
-.cover::after{content:'';position:absolute;bottom:0;left:0;right:0;height:3px;background:linear-gradient(90deg,${GOLD},${GOLD_LT},${GOLD});}
-.cover-top{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:32px;}
-.cover-brand{font-size:30px;font-weight:900;letter-spacing:.06em;color:${GOLD_LT};}
-.cover-meta{text-align:right;font-size:11px;color:rgba(255,255,255,.45);line-height:2;}
-.cover-eyebrow{font-size:11px;font-weight:600;color:rgba(255,255,255,.4);letter-spacing:.18em;text-transform:uppercase;margin-bottom:10px;}
-.cover-period{font-size:42px;font-weight:900;color:#fff;letter-spacing:-.02em;line-height:1;}
+.cover{background:#0e0e1a;color:#fff;padding:36px 44px 32px;border-bottom:4px solid ${GOLD};}
+.cover table{width:100%;border-collapse:collapse;}
+.cover td{border:none;padding:0;vertical-align:bottom;}
+.cover-brand{font-size:26pt;font-weight:900;letter-spacing:.06em;color:${GOLD_LT};}
+.cover-meta{text-align:right;font-size:9pt;color:rgba(255,255,255,.5);line-height:2;}
+.cover-eyebrow{font-size:8pt;font-weight:700;color:rgba(255,255,255,.4);letter-spacing:.2em;text-transform:uppercase;margin-top:24px;margin-bottom:6px;}
+.cover-period{font-size:28pt;font-weight:900;color:#fff;}
 .cover-period em{color:${GOLD_LT};font-style:normal;}
 /* ── ページ ── */
-.page{padding:40px 52px;}
-/* ── KPI ── */
-.kpi-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:1px;background:#e8e0d0;border:1px solid #e8e0d0;border-radius:10px;overflow:hidden;margin-bottom:32px;}
-.kpi{background:#fff;padding:20px 18px;text-align:center;}
-.kpi-label{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.12em;color:#9c8c6a;margin-bottom:8px;}
-.kpi-value{font-size:26px;font-weight:900;color:#1a1208;line-height:1;margin-bottom:2px;}
+.page{padding:32px 44px;}
+/* ── KPI（tableで4列） ── */
+.kpi-table{width:100%;border-collapse:collapse;border:1px solid #e0d8c8;border-radius:8px;margin-bottom:28px;overflow:hidden;}
+.kpi-table td{width:25%;padding:18px 16px;text-align:center;border-right:1px solid #e0d8c8;background:#fff;vertical-align:top;}
+.kpi-table td:last-child{border-right:none;}
+.kpi-label{font-size:8pt;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:#9c8c6a;margin-bottom:8px;}
+.kpi-value{font-size:22pt;font-weight:900;color:#1a1208;line-height:1;margin-bottom:3px;}
 .kpi-value.gold{color:${GOLD};}
+.kpi-sub{font-size:8pt;color:#9c8c6a;}
 /* ── 分析テキスト ── */
-.analysis{background:linear-gradient(135deg,#fdfaf4,#faf5e8);border:1px solid #e8d9b0;border-left:4px solid ${GOLD};border-radius:0 8px 8px 0;padding:18px 22px;margin-bottom:32px;line-height:1.9;font-size:12.5px;color:#2a1e08;}
-.analysis-title{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:${GOLD};margin-bottom:8px;}
+.analysis{background:#fdfaf4;border:1px solid #e0d0a0;border-left:4px solid ${GOLD};padding:16px 20px;margin-bottom:28px;line-height:1.85;font-size:10.5pt;color:#2a1e08;}
+.analysis-title{font-size:8pt;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:${GOLD};margin-bottom:8px;}
 /* ── セクション ── */
-.section{margin-bottom:32px;}
-.section-head{display:flex;align-items:center;gap:10px;margin-bottom:14px;padding-bottom:10px;border-bottom:1px solid #e8e0d0;}
-.section-head::before{content:'';display:block;width:4px;height:18px;background:linear-gradient(180deg,${GOLD},${GOLD_LT});border-radius:2px;flex-shrink:0;}
-.section-title{font-size:13px;font-weight:700;letter-spacing:.04em;color:#1a1208;}
-.section-sub{font-size:10px;color:#9c8c6a;margin-left:auto;letter-spacing:.06em;}
+.section{margin-bottom:28px;}
+.sec-head{border-left:4px solid ${GOLD};padding:4px 0 4px 10px;margin-bottom:12px;display:table;width:100%;}
+.sec-title{font-size:11pt;font-weight:700;display:table-cell;}
+.sec-sub{font-size:8.5pt;color:#9c8c6a;display:table-cell;text-align:right;vertical-align:middle;}
 /* ── テーブル ── */
-table{width:100%;border-collapse:collapse;}
-thead tr{background:#faf7f0;}
-th{padding:9px 14px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#6b5c3a;text-align:left;border-bottom:2px solid #e8e0d0;}
-tbody tr:nth-child(even){background:#fdfaf4;}
-td{padding:9px 14px;border-bottom:1px solid #f0ece0;vertical-align:middle;font-size:12px;}
-.num{text-align:right;font-variant-numeric:tabular-nums;font-weight:500;}
-tbody tr:last-child td{border-bottom:none;}
-tfoot td{padding:10px 14px;font-weight:700;border-top:2px solid #e8e0d0;background:#faf7f0;}
-/* ── 2カラム ── */
-.two-col{display:grid;grid-template-columns:1fr 1fr;gap:28px;}
-.three-col{display:grid;grid-template-columns:1fr 1fr 1fr;gap:20px;}
+.data-table{width:100%;border-collapse:collapse;}
+.data-table thead tr{background:#faf7f0;}
+.data-table th{padding:8px 12px;font-size:8pt;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:#6b5c3a;text-align:left;border-bottom:2px solid #e0d8c8;}
+.data-table tbody tr:nth-child(even){background:#fdfaf4;}
+.data-table td{padding:8px 12px;border-bottom:1px solid #ede8dc;font-size:10pt;vertical-align:middle;}
+.data-table tfoot td{padding:8px 12px;font-weight:700;border-top:2px solid #e0d8c8;background:#faf7f0;font-size:10pt;}
+.num{text-align:right;}
+/* ── 2列レイアウト（tableで） ── */
+.two-col-table{width:100%;border-collapse:collapse;margin-bottom:28px;}
+.two-col-table td{width:50%;vertical-align:top;padding:0;}
+.two-col-table td:first-child{padding-right:16px;}
+.two-col-table td:last-child{padding-left:16px;}
+.col-divider{border-left:1px solid #e0d8c8;}
 /* ── チャート ── */
-.chart-box{display:flex;align-items:center;justify-content:center;padding:8px 0;}
-canvas{max-width:200px;max-height:200px;}
+.chart-wrap{text-align:center;padding:8px 0;}
 /* ── フッター ── */
-.footer{margin-top:40px;padding-top:14px;border-top:1px solid #e8e0d0;display:flex;justify-content:space-between;align-items:center;font-size:10px;color:#9c8c6a;}
+.footer{margin-top:32px;padding-top:12px;border-top:1px solid #e0d8c8;}
+.footer table{width:100%;border-collapse:collapse;}
+.footer td{border:none;padding:0;font-size:8pt;color:#9c8c6a;}
 .footer-brand{font-weight:700;color:${GOLD};letter-spacing:.1em;}
 /* ── 印刷 ── */
 @media print{
-  @page{margin:0;size:A4;}
+  @page{size:A4;margin:0;}
   .toolbar{display:none!important;}
-  .cover{padding:32px 44px 28px;}
-  .page{padding:28px 44px;}
+  .page{padding:24px 36px;}
+  .cover{padding:28px 36px 24px;}
+  .section{page-break-inside:avoid;}
 }
 </style>
 </head>
 <body>
 
 <div class="toolbar">
-  <button class="tbtn" onclick="window.print()">🖨️ 印刷</button>
-  <button class="tbtn primary" onclick="
-    document.querySelector('.toolbar').style.display='none';
-    html2pdf().set({margin:0,filename:'GREED_月末レポート_${label}.pdf',html2canvas:{scale:2,useCORS:true,logging:false},jsPDF:{unit:'mm',format:'a4',orientation:'portrait'}}).from(document.body).save().then(()=>{document.querySelector('.toolbar').style.display='flex';});
-  ">📄 PDF保存</button>
+  <button class="tbtn" onclick="window.print()">🖨️ 印刷 / PDF保存</button>
 </div>
 
 <div class="cover">
-  <div class="cover-top">
-    <div class="cover-brand">GREED</div>
-    <div class="cover-meta"><div>作成日: ${today}</div><div>GREED 予約管理システム</div><div>社外秘 / Confidential</div></div>
-  </div>
+  <table><tr>
+    <td class="cover-brand">GREED</td>
+    <td class="cover-meta"><div>作成日: ${today}</div><div>GREED 予約管理システム</div><div>社外秘 — Confidential</div></td>
+  </tr></table>
   <div class="cover-eyebrow">Monthly Performance Report</div>
-  <div class="cover-period">${label.replace('年', '<em>年</em>').replace('月', '<em>月</em>')}</div>
+  <div class="cover-period">${label.replace('年','<em>年</em>').replace('月','<em>月</em>')}</div>
 </div>
 
 <div class="page">
 
-<div class="kpi-grid">
-  <div class="kpi">
+<table class="kpi-table"><tr>
+  <td>
     <div class="kpi-label">成約件数</div>
     <div class="kpi-value">${Number(summary.count).toLocaleString()}</div>
-    ${prevCountHTML}
-  </div>
-  <div class="kpi">
+    <div class="kpi-sub">${prevCountHTML || '件'}</div>
+  </td>
+  <td>
     <div class="kpi-label">合計売上</div>
-    <div class="kpi-value gold" style="font-size:${summary.total>=1000000?'19px':'26px'}">¥${Number(summary.total).toLocaleString()}</div>
-    ${prevTotalHTML}
-  </div>
-  <div class="kpi">
+    <div class="kpi-value gold" style="font-size:${summary.total>=1000000?'16pt':'22pt'}">¥${Number(summary.total).toLocaleString()}</div>
+    <div class="kpi-sub">${prevTotalHTML || 'キャンセル除く'}</div>
+  </td>
+  <td>
     <div class="kpi-label">平均単価</div>
-    <div class="kpi-value" style="font-size:${avgUnit>=100000?'19px':'26px'}">¥${Number(avgUnit).toLocaleString()}</div>
-    ${prevAvgHTML}
-  </div>
-  <div class="kpi">
+    <div class="kpi-value" style="font-size:${avgUnit>=100000?'16pt':'22pt'}">¥${Number(avgUnit).toLocaleString()}</div>
+    <div class="kpi-sub">${prevAvgHTML || '1件あたり'}</div>
+  </td>
+  <td>
     <div class="kpi-label">一日平均</div>
     <div class="kpi-value">${avgPerDay}</div>
-    <div style="font-size:10px;color:#9c8c6a;margin-top:4px">件 / 日</div>
-  </div>
-</div>
+    <div class="kpi-sub">件 / 日</div>
+  </td>
+</tr></table>
 
 <div class="analysis">
   <div class="analysis-title">Executive Summary — 総括</div>
@@ -1153,46 +1155,48 @@ canvas{max-width:200px;max-height:200px;}
 </div>
 
 <div class="section">
-  <div class="section-head"><div class="section-title">店舗別実績</div><div class="section-sub">Store Performance</div></div>
-  <table>
-    <thead><tr><th>店舗名</th><th class="num">件数</th><th class="num">売上</th><th class="num">構成比</th><th style="width:120px">売上割合</th></tr></thead>
+  <div class="sec-head"><span class="sec-title">店舗別実績</span><span class="sec-sub">Store Performance</span></div>
+  <table class="data-table">
+    <thead><tr><th>店舗名</th><th class="num">件数</th><th class="num">売上</th><th class="num">構成比</th><th style="width:110pt">売上割合</th></tr></thead>
     <tbody>${storeRows}</tbody>
     <tfoot><tr><td>合計</td><td class="num">${Number(summary.count).toLocaleString()}件</td><td class="num">¥${Number(summary.total).toLocaleString()}</td><td class="num">100%</td><td></td></tr></tfoot>
   </table>
 </div>
 
-<div class="three-col">
-  <div class="section">
-    <div class="section-head"><div class="section-title">媒体別</div><div class="section-sub">By Media</div></div>
-    <table>
-      <thead><tr><th>媒体</th><th class="num">件数</th><th class="num">売上</th><th class="num">構成比</th></tr></thead>
-      <tbody>${mediaRows}</tbody>
-    </table>
-  </div>
-  <div class="section">
-    <div class="section-head"><div class="section-title">国籍別</div><div class="section-sub">By Nationality</div></div>
-    <table>
-      <thead><tr><th>国籍</th><th class="num">件数</th><th class="num">構成比</th></tr></thead>
-      <tbody>${natRows}</tbody>
-    </table>
-  </div>
-  <div class="section">
-    <div class="section-head"><div class="section-title">国籍分布</div><div class="section-sub">Chart</div></div>
-    <div class="chart-box"><canvas id="natChart"></canvas></div>
-  </div>
-</div>
-
-<div class="section">
-  <div class="section-head"><div class="section-title">月次推移（直近6ヶ月）</div><div class="section-sub">Monthly Trend</div></div>
-  <table>
-    <thead><tr><th>月</th><th class="num">件数</th><th class="num">売上</th><th class="num">平均単価</th></tr></thead>
-    <tbody>${trendRows}</tbody>
-  </table>
-</div>
+<table class="two-col-table"><tr>
+  <td>
+    <div class="section">
+      <div class="sec-head"><span class="sec-title">媒体別</span><span class="sec-sub">By Media</span></div>
+      <table class="data-table">
+        <thead><tr><th>媒体</th><th class="num">件数</th><th class="num">売上</th><th class="num">構成比</th></tr></thead>
+        <tbody>${mediaRows}</tbody>
+      </table>
+    </div>
+    <div class="section">
+      <div class="sec-head"><span class="sec-title">月次推移（直近6ヶ月）</span><span class="sec-sub">Monthly Trend</span></div>
+      <table class="data-table">
+        <thead><tr><th>月</th><th class="num">件数</th><th class="num">売上</th><th class="num">平均単価</th></tr></thead>
+        <tbody>${trendRows}</tbody>
+      </table>
+    </div>
+  </td>
+  <td class="col-divider">
+    <div class="section" style="padding-left:16px">
+      <div class="sec-head"><span class="sec-title">国籍別</span><span class="sec-sub">By Nationality</span></div>
+      <div class="chart-wrap"><canvas id="natChart" width="200" height="200"></canvas></div>
+      <table class="data-table" style="margin-top:10px">
+        <thead><tr><th>国籍</th><th class="num">件数</th><th class="num">構成比</th></tr></thead>
+        <tbody>${natRows}</tbody>
+      </table>
+    </div>
+  </td>
+</tr></table>
 
 <div class="footer">
-  <div><span class="footer-brand">GREED</span> — 社外秘 Confidential</div>
-  <div>本レポートは ${today} に自動生成されました &nbsp;|&nbsp; GREED 予約管理システム</div>
+  <table><tr>
+    <td><span class="footer-brand">GREED</span> — 社外秘 Confidential</td>
+    <td style="text-align:right">本レポートは ${today} に自動生成されました</td>
+  </tr></table>
 </div>
 
 </div>
@@ -1200,16 +1204,8 @@ canvas{max-width:200px;max-height:200px;}
 <script>
 new Chart(document.getElementById('natChart'),{
   type:'doughnut',
-  data:{
-    labels:${natLabels},
-    datasets:[{data:${natData},backgroundColor:${natColors},borderWidth:2,borderColor:'#fff',hoverOffset:4}]
-  },
-  options:{
-    cutout:'58%',
-    plugins:{
-      legend:{position:'bottom',labels:{font:{size:9},boxWidth:9,padding:8}}
-    }
-  }
+  data:{labels:${natLabels},datasets:[{data:${natData},backgroundColor:${natColors},borderWidth:2,borderColor:'#fff'}]},
+  options:{cutout:'52%',plugins:{legend:{position:'bottom',labels:{font:{size:9},boxWidth:9,padding:6}}}}
 });
 <\/script>
 </body></html>`;
