@@ -1118,8 +1118,8 @@ body{font-family:'Hiragino Kaku Gothic ProN','Hiragino Sans',Meiryo,'Yu Gothic U
 <body>
 
 <div class="toolbar">
-  <span style="font-size:9pt;color:#9c8c6a;margin-right:8px">PDF保存は印刷ダイアログで「PDFに保存」を選択</span>
-  <button class="tbtn" onclick="window.print()">🖨️ 印刷 / PDF保存</button>
+  <span style="font-size:9pt;color:#9c8c6a;margin-right:8px">印刷ダイアログで「PDFに保存」を選択するとPDF出力できます</span>
+  <button class="tbtn primary" onclick="doPrint()">🖨️ 印刷 / PDF保存</button>
 </div>
 
 <div class="cover">
@@ -1244,6 +1244,19 @@ new Chart(tc,{
     }
   }
 });
+function doPrint() {
+  // Canvas → PNG画像に変換してから印刷（PDF化時に空白になる問題を防ぐ）
+  document.querySelectorAll('canvas').forEach(canvas => {
+    const img = document.createElement('img');
+    img.src = canvas.toDataURL('image/png');
+    img.style.width  = canvas.style.width  || canvas.width  + 'px';
+    img.style.height = canvas.style.height || canvas.height + 'px';
+    img.style.display = 'block';
+    canvas.replaceWith(img);
+  });
+  setTimeout(() => window.print(), 50);
+}
+
 new Chart(document.getElementById('natChart'),{
   type:'doughnut',
   data:{labels:${natLabels},datasets:[{data:${natData},backgroundColor:${natColors},borderWidth:2,borderColor:'#fff'}]},
