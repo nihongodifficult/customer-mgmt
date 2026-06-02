@@ -1163,9 +1163,7 @@ body{font-family:'Hiragino Kaku Gothic ProN','Hiragino Sans',Meiryo,'Yu Gothic U
 
 <div class="section">
   <div class="sec-head"><span class="sec-title">月別売上トレンド</span><span class="sec-sub">直近6ヶ月 / Monthly Sales Trend</span></div>
-  <div style="position:relative;height:180px;">
-    <canvas id="trendChart"></canvas>
-  </div>
+  <canvas id="trendChart" style="width:100%;height:160px;display:block;"></canvas>
 </div>
 
 <div class="section">
@@ -1177,21 +1175,24 @@ body{font-family:'Hiragino Kaku Gothic ProN','Hiragino Sans',Meiryo,'Yu Gothic U
   </table>
 </div>
 
-<div class="section">
-  <div class="sec-head"><span class="sec-title">媒体別</span><span class="sec-sub">By Media</span></div>
-  <table class="data-table">
-    <thead><tr><th>媒体</th><th class="num">件数</th><th class="num">売上</th><th class="num">構成比</th></tr></thead>
-    <tbody>${mediaRows}</tbody>
-  </table>
-</div>
-
-<div class="section">
-  <div class="sec-head"><span class="sec-title">月次推移（直近6ヶ月）</span><span class="sec-sub">Monthly Trend</span></div>
-  <table class="data-table">
-    <thead><tr><th>月</th><th class="num">件数</th><th class="num">売上</th><th class="num">平均単価</th></tr></thead>
-    <tbody>${trendRows}</tbody>
-  </table>
-</div>
+<table style="width:100%;border-collapse:collapse;margin-bottom:28px;">
+  <tr>
+    <td style="width:50%;vertical-align:top;padding-right:18px;">
+      <div class="sec-head"><span class="sec-title">媒体別</span><span class="sec-sub">By Media</span></div>
+      <table class="data-table">
+        <thead><tr><th>媒体</th><th class="num">件数</th><th class="num">売上</th><th class="num">構成比</th></tr></thead>
+        <tbody>${mediaRows}</tbody>
+      </table>
+    </td>
+    <td style="width:50%;vertical-align:top;padding-left:18px;border-left:1px solid #e0d8c8;">
+      <div class="sec-head"><span class="sec-title">月次推移（直近6ヶ月）</span><span class="sec-sub">Monthly Trend</span></div>
+      <table class="data-table">
+        <thead><tr><th>月</th><th class="num">件数</th><th class="num">売上</th><th class="num">平均単価</th></tr></thead>
+        <tbody>${trendRows}</tbody>
+      </table>
+    </td>
+  </tr>
+</table>
 
 <div class="section" style="page-break-before:always;padding-top:32px;">
   <div class="sec-head"><span class="sec-title">国籍別</span><span class="sec-sub">By Nationality — 上位${TOP_N}か国 + その他</span></div>
@@ -1220,24 +1221,25 @@ body{font-family:'Hiragino Kaku Gothic ProN','Hiragino Sans',Meiryo,'Yu Gothic U
 </div>
 
 <script>
-new Chart(document.getElementById('trendChart'),{
+const tc = document.getElementById('trendChart');
+tc.width  = tc.parentElement.offsetWidth || 680;
+tc.height = 160;
+new Chart(tc,{
   type:'bar',
   data:{
     labels:${JSON.stringify(trend.map(r=>r.label))},
     datasets:[{
       data:${JSON.stringify(trend.map(r=>r.total))},
-      backgroundColor: ${JSON.stringify(trend.map((r,i)=> i===trend.length-1 ? '#B8960C' : 'rgba(184,150,12,0.35)'))},
-      borderColor: ${JSON.stringify(trend.map((r,i)=> i===trend.length-1 ? '#9A7A08' : 'rgba(184,150,12,0.6)'))},
-      borderWidth:1,
-      borderRadius:4
+      backgroundColor:${JSON.stringify(trend.map((r,i)=>i===trend.length-1?'#B8960C':'rgba(184,150,12,0.3)'))},
+      borderColor:${JSON.stringify(trend.map((r,i)=>i===trend.length-1?'#9A7A08':'rgba(184,150,12,0.5)'))},
+      borderWidth:1,borderRadius:4
     }]
   },
   options:{
-    responsive:true,
-    maintainAspectRatio:false,
+    responsive:false,
     plugins:{legend:{display:false},tooltip:{callbacks:{label:ctx=>'¥'+Number(ctx.raw).toLocaleString()}}},
     scales:{
-      y:{ticks:{callback:v=>v>=10000?Math.round(v/10000)+'万':'¥'+v.toLocaleString(),font:{size:9}},grid:{color:'rgba(0,0,0,0.06)'}},
+      y:{ticks:{callback:v=>v>=10000?Math.round(v/10000)+'万':'¥'+v.toLocaleString(),font:{size:9}},grid:{color:'rgba(0,0,0,0.05)'}},
       x:{ticks:{font:{size:10}},grid:{display:false}}
     }
   }
