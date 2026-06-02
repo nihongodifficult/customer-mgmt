@@ -1191,7 +1191,7 @@ body{font-family:'Hiragino Kaku Gothic ProN','Hiragino Sans',Meiryo,'Yu Gothic U
   </td>
 </tr></table>
 
-<div class="section">
+<div class="section" style="page-break-before:always;padding-top:32px;">
   <div class="sec-head"><span class="sec-title">国籍別</span><span class="sec-sub">By Nationality — 上位${TOP_N}か国 + その他</span></div>
   <table style="width:100%;border-collapse:collapse;">
     <tr>
