@@ -937,394 +937,287 @@ function exportStatsCSV() {
   URL.revokeObjectURL(url);
 }
 
-function printMonthlyReport() {
+async function printMonthlyReport() {
   if (!_statsCache) return;
   const { summary, byStore, byMedia, byNationality, trend, avgPerDay, label } = _statsCache;
 
+  // 先月データ取得
+  const prevYear  = state.statsMonth === 1 ? state.statsYear - 1 : state.statsYear;
+  const prevMonth = state.statsMonth === 1 ? 12 : state.statsMonth - 1;
+  const prevData  = await api._fetch(`/api/stats?year=${prevYear}&month=${prevMonth}${api._filterParam()}`).catch(() => null);
+  const prev      = prevData ? prevData.summary : null;
+
   const GOLD    = '#B8960C';
   const GOLD_LT = '#D4AF37';
-  const COLORS  = ['#1a1a2e','#2d2d44','#B8960C','#8B6914','#4a4a6a','#6b6b8a','#c8a84b','#e8c96e','#3d3d5c','#D4AF37'];
+  const COLORS  = ['#1a1a2e','#4a4a6a','#B8960C','#8B6914','#2d2d44','#6b6b8a','#c8a84b','#e8c96e','#3d3d5c','#D4AF37'];
 
   const avgUnit  = Math.round(summary.count ? summary.total / summary.count : 0);
   const today    = new Date().toLocaleDateString('ja-JP', { year:'numeric', month:'long', day:'numeric' });
   const maxStore = byStore.reduce((m, r) => Math.max(m, Number(r.total)), 0);
+  const natTotal = byNationality.reduce((s, r) => s + Number(r.count), 0);
 
+  // 前月比ヘルパー
+  const mom = (curr, prevVal) => {
+    if (!prevVal) return '<span style="color:#9c8c6a;font-size:10px">—</span>';
+    const pct = ((curr - prevVal) / prevVal * 100).toFixed(1);
+    const up  = curr >= prevVal;
+    return '<span style="color:' + (up ? '#059669' : '#dc2626') + ';font-weight:700;font-size:11px">' + (up ? '▲' : '▼') + ' ' + Math.abs(pct) + '%</span>';
+  };
+
+  // 分析文章生成
+  const momCountPct = prev && prev.count ? ((summary.count - prev.count) / prev.count * 100).toFixed(1) : null;
+  const momTotalPct = prev && prev.total ? ((summary.total - prev.total) / prev.total * 100).toFixed(1) : null;
+  const topStore    = byStore[0];
+  const topMedia    = byMedia[0];
+  const topNat      = byNationality[0];
+  const prevLabel   = prevMonth + '月';
+
+  let analysis = label + 'の営業実績についてご報告いたします。';
+  if (momCountPct !== null) {
+    const dir = momCountPct >= 0 ? '増加' : '減少';
+    analysis += '当月の成約件数は' + summary.count + '件となり、前月（' + prevLabel + '）比' + Math.abs(momCountPct) + '%の' + dir + 'を記録しました。';
+  } else {
+    analysis += '当月の成約件数は' + summary.count + '件でした。';
+  }
+  if (topStore) {
+    const storePct = summary.total ? Math.round(topStore.total / summary.total * 100) : 0;
+    analysis += '店舗別パフォーマンスにおいては、' + topStore.name + 'が売上全体の' + storePct + '%を占め、最高実績を達成しました。';
+  }
+  if (topMedia) {
+    const mediaPct = summary.count ? Math.round(topMedia.count / summary.count * 100) : 0;
+    analysis += '集客媒体では' + topMedia.name + 'が最も多く、全体の' + mediaPct + '%を占める主要チャネルとして引き続き機能しています。';
+  }
+  if (topNat && natTotal) {
+    const natPct = Math.round(topNat.count / natTotal * 100);
+    analysis += '国籍構成では' + topNat.name + 'が' + natPct + '%と最多を占めています。';
+  }
+  if (momTotalPct !== null) {
+    const dir2 = momTotalPct >= 0 ? '上回る' : '下回る';
+    analysis += '総売上は¥' + Number(summary.total).toLocaleString() + 'となり、前月を' + Math.abs(momTotalPct) + '%' + dir2 + '結果となりました。';
+  }
+
+  // テーブル行
   const storeRows = byStore.map((r, i) => {
-    const pct     = summary.total ? (r.total / summary.total * 100).toFixed(1) : '0.0';
-    const barPct  = maxStore ? Math.round(r.total / maxStore * 100) : 0;
-    const color   = COLORS[i % COLORS.length];
-    return `<tr>
-      <td><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${color};margin-right:8px;vertical-align:middle"></span>${r.name}</td>
-      <td class="num">${Number(r.count).toLocaleString()}件</td>
-      <td class="num">¥${Number(r.total).toLocaleString()}</td>
-      <td class="num">${pct}%</td>
-      <td style="width:120px;padding-right:16px">
-        <div style="height:6px;background:#f0ece0;border-radius:3px">
-          <div style="height:6px;width:${barPct}%;background:linear-gradient(90deg,${GOLD},${GOLD_LT});border-radius:3px"></div>
-        </div>
-      </td>
-    </tr>`;
+    const pct    = summary.total ? (r.total / summary.total * 100).toFixed(1) : '0.0';
+    const barPct = maxStore ? Math.round(r.total / maxStore * 100) : 0;
+    const color  = COLORS[i % COLORS.length];
+    return '<tr><td><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:' + color + ';margin-right:8px;vertical-align:middle"></span>' + r.name + '</td>'
+      + '<td class="num">' + Number(r.count).toLocaleString() + '件</td>'
+      + '<td class="num">¥' + Number(r.total).toLocaleString() + '</td>'
+      + '<td class="num">' + pct + '%</td>'
+      + '<td style="width:120px;padding-right:16px"><div style="height:6px;background:#f0ece0;border-radius:3px"><div style="height:6px;width:' + barPct + '%;background:linear-gradient(90deg,' + GOLD + ',' + GOLD_LT + ');border-radius:3px"></div></div></td></tr>';
   }).join('');
 
-  const mediaRows = byMedia.map(r => `<tr>
-    <td>${r.name || '—'}</td>
-    <td class="num">${Number(r.count).toLocaleString()}件</td>
-    <td class="num">¥${Number(r.total).toLocaleString()}</td>
-    <td class="num">${summary.count ? (r.count/summary.count*100).toFixed(1) : 0}%</td>
-  </tr>`).join('');
+  const mediaRows = byMedia.map(r =>
+    '<tr><td>' + (r.name||'—') + '</td>'
+    + '<td class="num">' + Number(r.count).toLocaleString() + '件</td>'
+    + '<td class="num">¥' + Number(r.total).toLocaleString() + '</td>'
+    + '<td class="num">' + (summary.count ? (r.count/summary.count*100).toFixed(1) : 0) + '%</td></tr>'
+  ).join('');
 
-  const trendRows = trend.map(r => `<tr>
-    <td>${r.label}</td>
-    <td class="num">${Number(r.count).toLocaleString()}件</td>
-    <td class="num">¥${Number(r.total).toLocaleString()}</td>
-    <td class="num">¥${r.count ? Math.round(r.total/r.count).toLocaleString() : '—'}</td>
-  </tr>`).join('');
+  const natRows = byNationality.map((r, i) => {
+    const pct = natTotal ? (Number(r.count)/natTotal*100).toFixed(1) : '0.0';
+    const col = COLORS[i % COLORS.length];
+    return '<tr><td><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:' + col + ';margin-right:6px;vertical-align:middle"></span>' + (r.name||'—') + '</td>'
+      + '<td class="num">' + Number(r.count).toLocaleString() + '件</td>'
+      + '<td class="num">' + pct + '%</td></tr>';
+  }).join('');
 
-  const natLabels = JSON.stringify(byNationality.map(r => r.name));
+  const trendRows = trend.map(r =>
+    '<tr><td>' + r.label + '</td>'
+    + '<td class="num">' + Number(r.count).toLocaleString() + '件</td>'
+    + '<td class="num">¥' + Number(r.total).toLocaleString() + '</td>'
+    + '<td class="num">¥' + (r.count ? Math.round(r.total/r.count).toLocaleString() : '—') + '</td></tr>'
+  ).join('');
+
+  const natLabels = JSON.stringify(byNationality.map(r => r.name + ' ' + (natTotal ? (r.count/natTotal*100).toFixed(0) : 0) + '%'));
   const natData   = JSON.stringify(byNationality.map(r => Number(r.count)));
   const natColors = JSON.stringify(byNationality.map((_, i) => COLORS[i % COLORS.length]));
 
-  const html = `<!DOCTYPE html>
-<html lang="ja">
-<head>
-<meta charset="UTF-8">
-<title>Monthly Report — ${label}</title>
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4"></scr` + `ipt>
-<style>
-  @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700;900&display=swap');
-  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-  body {
-    font-family: 'Noto Sans JP', 'Hiragino Kaku Gothic ProN', Meiryo, sans-serif;
-    font-size: 12px;
-    color: #1a1208;
-    background: #fff;
-    padding: 0;
-  }
+  const prevCountHTML = prev ? ('<div style="font-size:10px;color:#9c8c6a;margin-top:4px">前月 ' + Number(prev.count).toLocaleString() + '件 &nbsp;' + mom(summary.count, prev.count) + '</div>') : '';
+  const prevTotalHTML = prev ? ('<div style="font-size:10px;color:#9c8c6a;margin-top:4px">前月 ¥' + Number(prev.total).toLocaleString() + ' &nbsp;' + mom(summary.total, prev.total) + '</div>') : '';
+  const prevAvgHTML   = prev && prev.count ? ('<div style="font-size:10px;color:#9c8c6a;margin-top:4px">前月 ¥' + Math.round(prev.total/prev.count).toLocaleString() + ' &nbsp;' + mom(avgUnit, Math.round(prev.total/prev.count)) + '</div>') : '';
 
-  /* ── カバーヘッダー ── */
-  .cover {
-    background: #0e0e1a;
-    color: #fff;
-    padding: 40px 52px 36px;
-    position: relative;
-    overflow: hidden;
-  }
-  .cover::after {
-    content: '';
-    position: absolute;
-    bottom: 0; left: 0; right: 0;
-    height: 3px;
-    background: linear-gradient(90deg, ${GOLD}, ${GOLD_LT}, ${GOLD});
-  }
-  .cover-top {
-    display: flex;
-    justify-content: space-between;
-    align-items: flex-start;
-    margin-bottom: 28px;
-  }
-  .cover-brand {
-    font-size: 28px;
-    font-weight: 900;
-    letter-spacing: .06em;
-    color: ${GOLD_LT};
-  }
-  .cover-meta {
-    text-align: right;
-    font-size: 11px;
-    color: rgba(255,255,255,.5);
-    line-height: 1.8;
-  }
-  .cover-title {
-    font-size: 13px;
-    font-weight: 500;
-    color: rgba(255,255,255,.5);
-    letter-spacing: .15em;
-    text-transform: uppercase;
-    margin-bottom: 8px;
-  }
-  .cover-period {
-    font-size: 38px;
-    font-weight: 900;
-    color: #fff;
-    letter-spacing: -.02em;
-    line-height: 1;
-  }
-  .cover-period span { color: ${GOLD_LT}; }
-
-  /* ── ページ本文 ── */
-  .page { padding: 40px 52px; }
-
-  /* ── KPIグリッド ── */
-  .kpi-grid {
-    display: grid;
-    grid-template-columns: repeat(4, 1fr);
-    gap: 1px;
-    background: #e8e0d0;
-    border: 1px solid #e8e0d0;
-    border-radius: 10px;
-    overflow: hidden;
-    margin-bottom: 36px;
-  }
-  .kpi {
-    background: #fff;
-    padding: 20px 18px;
-    text-align: center;
-  }
-  .kpi-label {
-    font-size: 10px;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: .1em;
-    color: #9c8c6a;
-    margin-bottom: 8px;
-  }
-  .kpi-value {
-    font-size: 26px;
-    font-weight: 900;
-    color: #1a1208;
-    line-height: 1;
-    margin-bottom: 4px;
-  }
-  .kpi-value.gold { color: ${GOLD}; }
-  .kpi-sub { font-size: 10px; color: #9c8c6a; }
-
-  /* ── セクション ── */
-  .section { margin-bottom: 36px; }
-  .section-head {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    margin-bottom: 14px;
-    padding-bottom: 10px;
-    border-bottom: 1px solid #e8e0d0;
-  }
-  .section-head::before {
-    content: '';
-    display: block;
-    width: 4px;
-    height: 18px;
-    background: linear-gradient(180deg, ${GOLD}, ${GOLD_LT});
-    border-radius: 2px;
-    flex-shrink: 0;
-  }
-  .section-title {
-    font-size: 13px;
-    font-weight: 700;
-    letter-spacing: .04em;
-    color: #1a1208;
-  }
-  .section-sub { font-size: 11px; color: #9c8c6a; margin-left: auto; }
-
-  /* ── テーブル ── */
-  table { width: 100%; border-collapse: collapse; }
-  thead tr { background: #faf7f0; }
-  th {
-    padding: 9px 14px;
-    font-size: 10px;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: .08em;
-    color: #6b5c3a;
-    text-align: left;
-    border-bottom: 2px solid #e8e0d0;
-  }
-  tbody tr { transition: background .1s; }
-  tbody tr:nth-child(even) { background: #fdfaf4; }
-  td {
-    padding: 10px 14px;
-    border-bottom: 1px solid #f0ece0;
-    vertical-align: middle;
-    font-size: 12px;
-  }
-  .num { text-align: right; font-variant-numeric: tabular-nums; font-weight: 500; }
-  tbody tr:last-child td { border-bottom: none; }
-  tfoot td {
-    padding: 10px 14px;
-    font-weight: 700;
-    border-top: 2px solid #e8e0d0;
-    background: #faf7f0;
-    font-size: 12px;
-  }
-
-  /* ── 2カラム ── */
-  .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 28px; }
-
-  /* ── チャート ── */
-  .chart-box {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    padding: 12px 0;
-  }
-  canvas { max-width: 220px; max-height: 220px; }
-
-  /* ── フッター ── */
-  .footer {
-    margin-top: 48px;
-    padding-top: 16px;
-    border-top: 1px solid #e8e0d0;
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    font-size: 10px;
-    color: #9c8c6a;
-  }
-  .footer-brand { font-weight: 700; color: ${GOLD}; letter-spacing: .08em; }
-
-  /* ── 印刷 ── */
-  @media print {
-    @page { margin: 0; size: A4; }
-    .cover { padding: 32px 40px 28px; }
-    .page  { padding: 28px 40px; }
-    .no-print { display: none !important; }
-  }
+  const html = '<!DOCTYPE html>\n<html lang="ja">\n<head>\n<meta charset="UTF-8">\n<title>Monthly Report — ' + label + '</title>\n'
+    + '<script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"><\/script>\n'
+    + '<script src="https://cdn.jsdelivr.net/npm/html2pdf.js@0.10.1/dist/html2pdf.bundle.min.js"><\/script>\n'
+    + `<style>
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700;900&display=swap');
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
+body{font-family:'Noto Sans JP','Hiragino Kaku Gothic ProN',Meiryo,sans-serif;font-size:12px;color:#1a1208;background:#fff;}
+/* ── ツールバー ── */
+.toolbar{display:flex;align-items:center;justify-content:flex-end;gap:10px;padding:12px 52px;background:#faf7f0;border-bottom:1px solid #e8e0d0;}
+.tbtn{padding:8px 18px;border-radius:6px;border:1.5px solid #e8e0d0;background:#fff;font-size:12px;font-weight:700;cursor:pointer;color:#1a1208;font-family:inherit;}
+.tbtn.primary{background:linear-gradient(135deg,${GOLD},${GOLD_LT});border-color:${GOLD};color:#fff;}
+.tbtn:hover{opacity:.85;}
+/* ── カバー ── */
+.cover{background:#0e0e1a;color:#fff;padding:44px 52px 38px;position:relative;overflow:hidden;}
+.cover::after{content:'';position:absolute;bottom:0;left:0;right:0;height:3px;background:linear-gradient(90deg,${GOLD},${GOLD_LT},${GOLD});}
+.cover-top{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:32px;}
+.cover-brand{font-size:30px;font-weight:900;letter-spacing:.06em;color:${GOLD_LT};}
+.cover-meta{text-align:right;font-size:11px;color:rgba(255,255,255,.45);line-height:2;}
+.cover-eyebrow{font-size:11px;font-weight:600;color:rgba(255,255,255,.4);letter-spacing:.18em;text-transform:uppercase;margin-bottom:10px;}
+.cover-period{font-size:42px;font-weight:900;color:#fff;letter-spacing:-.02em;line-height:1;}
+.cover-period em{color:${GOLD_LT};font-style:normal;}
+/* ── ページ ── */
+.page{padding:40px 52px;}
+/* ── KPI ── */
+.kpi-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:1px;background:#e8e0d0;border:1px solid #e8e0d0;border-radius:10px;overflow:hidden;margin-bottom:32px;}
+.kpi{background:#fff;padding:20px 18px;text-align:center;}
+.kpi-label{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.12em;color:#9c8c6a;margin-bottom:8px;}
+.kpi-value{font-size:26px;font-weight:900;color:#1a1208;line-height:1;margin-bottom:2px;}
+.kpi-value.gold{color:${GOLD};}
+/* ── 分析テキスト ── */
+.analysis{background:linear-gradient(135deg,#fdfaf4,#faf5e8);border:1px solid #e8d9b0;border-left:4px solid ${GOLD};border-radius:0 8px 8px 0;padding:18px 22px;margin-bottom:32px;line-height:1.9;font-size:12.5px;color:#2a1e08;}
+.analysis-title{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:${GOLD};margin-bottom:8px;}
+/* ── セクション ── */
+.section{margin-bottom:32px;}
+.section-head{display:flex;align-items:center;gap:10px;margin-bottom:14px;padding-bottom:10px;border-bottom:1px solid #e8e0d0;}
+.section-head::before{content:'';display:block;width:4px;height:18px;background:linear-gradient(180deg,${GOLD},${GOLD_LT});border-radius:2px;flex-shrink:0;}
+.section-title{font-size:13px;font-weight:700;letter-spacing:.04em;color:#1a1208;}
+.section-sub{font-size:10px;color:#9c8c6a;margin-left:auto;letter-spacing:.06em;}
+/* ── テーブル ── */
+table{width:100%;border-collapse:collapse;}
+thead tr{background:#faf7f0;}
+th{padding:9px 14px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#6b5c3a;text-align:left;border-bottom:2px solid #e8e0d0;}
+tbody tr:nth-child(even){background:#fdfaf4;}
+td{padding:9px 14px;border-bottom:1px solid #f0ece0;vertical-align:middle;font-size:12px;}
+.num{text-align:right;font-variant-numeric:tabular-nums;font-weight:500;}
+tbody tr:last-child td{border-bottom:none;}
+tfoot td{padding:10px 14px;font-weight:700;border-top:2px solid #e8e0d0;background:#faf7f0;}
+/* ── 2カラム ── */
+.two-col{display:grid;grid-template-columns:1fr 1fr;gap:28px;}
+.three-col{display:grid;grid-template-columns:1fr 1fr 1fr;gap:20px;}
+/* ── チャート ── */
+.chart-box{display:flex;align-items:center;justify-content:center;padding:8px 0;}
+canvas{max-width:200px;max-height:200px;}
+/* ── フッター ── */
+.footer{margin-top:40px;padding-top:14px;border-top:1px solid #e8e0d0;display:flex;justify-content:space-between;align-items:center;font-size:10px;color:#9c8c6a;}
+.footer-brand{font-weight:700;color:${GOLD};letter-spacing:.1em;}
+/* ── 印刷 ── */
+@media print{
+  @page{margin:0;size:A4;}
+  .toolbar{display:none!important;}
+  .cover{padding:32px 44px 28px;}
+  .page{padding:28px 44px;}
+}
 </style>
 </head>
 <body>
 
+<div class="toolbar">
+  <button class="tbtn" onclick="window.print()">🖨️ 印刷</button>
+  <button class="tbtn primary" onclick="
+    document.querySelector('.toolbar').style.display='none';
+    html2pdf().set({margin:0,filename:'GREED_月末レポート_${label}.pdf',html2canvas:{scale:2,useCORS:true,logging:false},jsPDF:{unit:'mm',format:'a4',orientation:'portrait'}}).from(document.body).save().then(()=>{document.querySelector('.toolbar').style.display='flex';});
+  ">📄 PDF保存</button>
+</div>
+
 <div class="cover">
   <div class="cover-top">
     <div class="cover-brand">GREED</div>
-    <div class="cover-meta">
-      <div>作成日: ${today}</div>
-      <div>GREED 予約管理システム</div>
-    </div>
+    <div class="cover-meta"><div>作成日: ${today}</div><div>GREED 予約管理システム</div><div>社外秘 / Confidential</div></div>
   </div>
-  <div class="cover-title">Monthly Performance Report</div>
-  <div class="cover-period">${label.replace('年', '<span>年</span>').replace('月', '<span>月</span>')}</div>
+  <div class="cover-eyebrow">Monthly Performance Report</div>
+  <div class="cover-period">${label.replace('年', '<em>年</em>').replace('月', '<em>月</em>')}</div>
 </div>
 
 <div class="page">
 
-  <div class="kpi-grid">
-    <div class="kpi">
-      <div class="kpi-label">成約件数</div>
-      <div class="kpi-value">${Number(summary.count).toLocaleString()}</div>
-      <div class="kpi-sub">件</div>
-    </div>
-    <div class="kpi">
-      <div class="kpi-label">合計売上</div>
-      <div class="kpi-value gold" style="font-size:${summary.total >= 1000000 ? '20px' : '26px'}">¥${Number(summary.total).toLocaleString()}</div>
-      <div class="kpi-sub">キャンセル除く</div>
-    </div>
-    <div class="kpi">
-      <div class="kpi-label">平均単価</div>
-      <div class="kpi-value" style="font-size:${avgUnit >= 100000 ? '20px' : '26px'}">¥${Number(avgUnit).toLocaleString()}</div>
-      <div class="kpi-sub">1件あたり</div>
-    </div>
-    <div class="kpi">
-      <div class="kpi-label">一日平均</div>
-      <div class="kpi-value">${avgPerDay}</div>
-      <div class="kpi-sub">件 / 日</div>
-    </div>
+<div class="kpi-grid">
+  <div class="kpi">
+    <div class="kpi-label">成約件数</div>
+    <div class="kpi-value">${Number(summary.count).toLocaleString()}</div>
+    ${prevCountHTML}
   </div>
+  <div class="kpi">
+    <div class="kpi-label">合計売上</div>
+    <div class="kpi-value gold" style="font-size:${summary.total>=1000000?'19px':'26px'}">¥${Number(summary.total).toLocaleString()}</div>
+    ${prevTotalHTML}
+  </div>
+  <div class="kpi">
+    <div class="kpi-label">平均単価</div>
+    <div class="kpi-value" style="font-size:${avgUnit>=100000?'19px':'26px'}">¥${Number(avgUnit).toLocaleString()}</div>
+    ${prevAvgHTML}
+  </div>
+  <div class="kpi">
+    <div class="kpi-label">一日平均</div>
+    <div class="kpi-value">${avgPerDay}</div>
+    <div style="font-size:10px;color:#9c8c6a;margin-top:4px">件 / 日</div>
+  </div>
+</div>
 
+<div class="analysis">
+  <div class="analysis-title">Executive Summary — 総括</div>
+  ${analysis}
+</div>
+
+<div class="section">
+  <div class="section-head"><div class="section-title">店舗別実績</div><div class="section-sub">Store Performance</div></div>
+  <table>
+    <thead><tr><th>店舗名</th><th class="num">件数</th><th class="num">売上</th><th class="num">構成比</th><th style="width:120px">売上割合</th></tr></thead>
+    <tbody>${storeRows}</tbody>
+    <tfoot><tr><td>合計</td><td class="num">${Number(summary.count).toLocaleString()}件</td><td class="num">¥${Number(summary.total).toLocaleString()}</td><td class="num">100%</td><td></td></tr></tfoot>
+  </table>
+</div>
+
+<div class="three-col">
   <div class="section">
-    <div class="section-head">
-      <div class="section-title">店舗別実績</div>
-      <div class="section-sub">Store Performance</div>
-    </div>
+    <div class="section-head"><div class="section-title">媒体別</div><div class="section-sub">By Media</div></div>
     <table>
-      <thead><tr>
-        <th>店舗名</th>
-        <th class="num">件数</th>
-        <th class="num">売上</th>
-        <th class="num">構成比</th>
-        <th style="width:130px">割合</th>
-      </tr></thead>
-      <tbody>${storeRows}</tbody>
-      <tfoot><tr>
-        <td>合計</td>
-        <td class="num">${Number(summary.count).toLocaleString()}件</td>
-        <td class="num">¥${Number(summary.total).toLocaleString()}</td>
-        <td class="num">100%</td>
-        <td></td>
-      </tr></tfoot>
+      <thead><tr><th>媒体</th><th class="num">件数</th><th class="num">売上</th><th class="num">構成比</th></tr></thead>
+      <tbody>${mediaRows}</tbody>
     </table>
   </div>
-
-  <div class="two-col">
-    <div class="section">
-      <div class="section-head">
-        <div class="section-title">媒体別</div>
-        <div class="section-sub">By Media</div>
-      </div>
-      <table>
-        <thead><tr>
-          <th>媒体</th>
-          <th class="num">件数</th>
-          <th class="num">売上</th>
-          <th class="num">構成比</th>
-        </tr></thead>
-        <tbody>${mediaRows}</tbody>
-      </table>
-    </div>
-
-    <div class="section">
-      <div class="section-head">
-        <div class="section-title">国籍別</div>
-        <div class="section-sub">By Nationality</div>
-      </div>
-      <div class="chart-box">
-        <canvas id="natChart"></canvas>
-      </div>
-    </div>
-  </div>
-
   <div class="section">
-    <div class="section-head">
-      <div class="section-title">月次推移（直近6ヶ月）</div>
-      <div class="section-sub">Monthly Trend</div>
-    </div>
+    <div class="section-head"><div class="section-title">国籍別</div><div class="section-sub">By Nationality</div></div>
     <table>
-      <thead><tr>
-        <th>月</th>
-        <th class="num">件数</th>
-        <th class="num">売上</th>
-        <th class="num">平均単価</th>
-      </tr></thead>
-      <tbody>${trendRows}</tbody>
+      <thead><tr><th>国籍</th><th class="num">件数</th><th class="num">構成比</th></tr></thead>
+      <tbody>${natRows}</tbody>
     </table>
   </div>
-
-  <div class="footer">
-    <div><span class="footer-brand">GREED</span> — Confidential</div>
-    <div>本レポートは ${today} に自動生成されました</div>
+  <div class="section">
+    <div class="section-head"><div class="section-title">国籍分布</div><div class="section-sub">Chart</div></div>
+    <div class="chart-box"><canvas id="natChart"></canvas></div>
   </div>
+</div>
+
+<div class="section">
+  <div class="section-head"><div class="section-title">月次推移（直近6ヶ月）</div><div class="section-sub">Monthly Trend</div></div>
+  <table>
+    <thead><tr><th>月</th><th class="num">件数</th><th class="num">売上</th><th class="num">平均単価</th></tr></thead>
+    <tbody>${trendRows}</tbody>
+  </table>
+</div>
+
+<div class="footer">
+  <div><span class="footer-brand">GREED</span> — 社外秘 Confidential</div>
+  <div>本レポートは ${today} に自動生成されました &nbsp;|&nbsp; GREED 予約管理システム</div>
+</div>
 
 </div>
 
 <script>
-new Chart(document.getElementById('natChart'), {
-  type: 'doughnut',
-  data: {
-    labels: ${natLabels},
-    datasets: [{
-      data: ${natData},
-      backgroundColor: ${natColors},
-      borderWidth: 2,
-      borderColor: '#fff',
-      hoverOffset: 6
-    }]
+new Chart(document.getElementById('natChart'),{
+  type:'doughnut',
+  data:{
+    labels:${natLabels},
+    datasets:[{data:${natData},backgroundColor:${natColors},borderWidth:2,borderColor:'#fff',hoverOffset:4}]
   },
-  options: {
-    cutout: '55%',
-    plugins: {
-      legend: {
-        position: 'bottom',
-        labels: { font: { size: 10, family: "'Noto Sans JP', sans-serif" }, boxWidth: 10, padding: 10 }
-      }
+  options:{
+    cutout:'58%',
+    plugins:{
+      legend:{position:'bottom',labels:{font:{size:9},boxWidth:9,padding:8}}
     }
   }
 });
-setTimeout(() => window.print(), 1000);
-</scr` + `ipt>
+<\/script>
 </body></html>`;
 
   const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
   const url  = URL.createObjectURL(blob);
   window.open(url, '_blank');
-  setTimeout(() => URL.revokeObjectURL(url), 60000);
+  setTimeout(() => URL.revokeObjectURL(url), 120000);
 }
 
 async function renderStats() {
