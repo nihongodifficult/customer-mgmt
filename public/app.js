@@ -1088,12 +1088,11 @@ body{font-family:'Hiragino Kaku Gothic ProN','Hiragino Sans',Meiryo,'Yu Gothic U
 .num{text-align:right;}
 /* ── 2列レイアウト（tableで） ── */
 .two-col-table{width:100%;border-collapse:collapse;margin-bottom:28px;}
-.two-col-table td{width:50%;vertical-align:top;padding:0;}
-.two-col-table td:first-child{padding-right:16px;}
-.two-col-table td:last-child{padding-left:16px;}
-.col-divider{border-left:1px solid #e0d8c8;}
+.two-col-table .col-left{width:58%;vertical-align:top;padding-right:20px;}
+.two-col-table .col-right{width:42%;vertical-align:top;padding-left:20px;border-left:1px solid #e0d8c8;}
 /* ── チャート ── */
-.chart-wrap{text-align:center;padding:8px 0;}
+.chart-wrap{text-align:center;padding:6px 0;}
+.chart-wrap canvas{width:180px!important;height:180px!important;}
 /* ── フッター ── */
 .footer{margin-top:32px;padding-top:12px;border-top:1px solid #e0d8c8;}
 .footer table{width:100%;border-collapse:collapse;}
@@ -1112,6 +1111,7 @@ body{font-family:'Hiragino Kaku Gothic ProN','Hiragino Sans',Meiryo,'Yu Gothic U
 <body>
 
 <div class="toolbar">
+  <span style="font-size:9pt;color:#9c8c6a;margin-right:8px">PDF保存は印刷ダイアログで「PDFに保存」を選択</span>
   <button class="tbtn" onclick="window.print()">🖨️ 印刷 / PDF保存</button>
 </div>
 
@@ -1164,7 +1164,7 @@ body{font-family:'Hiragino Kaku Gothic ProN','Hiragino Sans',Meiryo,'Yu Gothic U
 </div>
 
 <table class="two-col-table"><tr>
-  <td>
+  <td class="col-left">
     <div class="section">
       <div class="sec-head"><span class="sec-title">媒体別</span><span class="sec-sub">By Media</span></div>
       <table class="data-table">
@@ -1180,10 +1180,10 @@ body{font-family:'Hiragino Kaku Gothic ProN','Hiragino Sans',Meiryo,'Yu Gothic U
       </table>
     </div>
   </td>
-  <td class="col-divider">
-    <div class="section" style="padding-left:16px">
+  <td class="col-right">
+    <div class="section">
       <div class="sec-head"><span class="sec-title">国籍別</span><span class="sec-sub">By Nationality</span></div>
-      <div class="chart-wrap"><canvas id="natChart" width="200" height="200"></canvas></div>
+      <div class="chart-wrap"><canvas id="natChart" width="180" height="180"></canvas></div>
       <table class="data-table" style="margin-top:10px">
         <thead><tr><th>国籍</th><th class="num">件数</th><th class="num">構成比</th></tr></thead>
         <tbody>${natRows}</tbody>
@@ -1205,7 +1205,7 @@ body{font-family:'Hiragino Kaku Gothic ProN','Hiragino Sans',Meiryo,'Yu Gothic U
 new Chart(document.getElementById('natChart'),{
   type:'doughnut',
   data:{labels:${natLabels},datasets:[{data:${natData},backgroundColor:${natColors},borderWidth:2,borderColor:'#fff'}]},
-  options:{cutout:'52%',plugins:{legend:{position:'bottom',labels:{font:{size:9},boxWidth:9,padding:6}}}}
+  options:{responsive:false,maintainAspectRatio:true,cutout:'52%',plugins:{legend:{position:'bottom',labels:{font:{size:8},boxWidth:8,padding:5}}}}
 });
 <\/script>
 </body></html>`;
