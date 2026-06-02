@@ -1164,6 +1164,20 @@ body{font-family:'Hiragino Kaku Gothic ProN','Hiragino Sans',Meiryo,'Yu Gothic U
 <div class="section">
   <div class="sec-head"><span class="sec-title">月別売上トレンド</span><span class="sec-sub">直近6ヶ月 / Monthly Sales Trend</span></div>
   <canvas id="trendChart" style="width:100%;height:160px;display:block;"></canvas>
+  <table class="data-table" style="margin-top:10px;">
+    <thead><tr><th>月</th><th class="num">件数</th><th class="num">売上</th><th class="num">平均単価</th><th class="num">前月比（件数）</th></tr></thead>
+    <tbody>${trend.map((r,i)=>{
+      const prev = i>0?trend[i-1]:null;
+      const momStr = prev&&prev.count ? (((r.count-prev.count)/prev.count*100)>=0?'<span style="color:#059669">▲ ':'<span style="color:#dc2626">▼ ') + Math.abs(((r.count-prev.count)/prev.count*100)).toFixed(1)+'%</span>' : '<span style="color:#9c8c6a">—</span>';
+      return '<tr'+(i===trend.length-1?' style="font-weight:700;background:#fdfaf0"':'')+'>'
+        +'<td>'+r.label+'</td>'
+        +'<td class="num">'+Number(r.count).toLocaleString()+'件</td>'
+        +'<td class="num">¥'+Number(r.total).toLocaleString()+'</td>'
+        +'<td class="num">¥'+(r.count?Math.round(r.total/r.count).toLocaleString():'—')+'</td>'
+        +'<td class="num">'+momStr+'</td>'
+        +'</tr>';
+    }).join('')}</tbody>
+  </table>
 </div>
 
 <div class="section">
@@ -1175,43 +1189,38 @@ body{font-family:'Hiragino Kaku Gothic ProN','Hiragino Sans',Meiryo,'Yu Gothic U
   </table>
 </div>
 
-<table style="width:100%;border-collapse:collapse;margin-bottom:28px;">
-  <tr>
-    <td style="width:50%;vertical-align:top;padding-right:18px;">
-      <div class="sec-head"><span class="sec-title">媒体別</span><span class="sec-sub">By Media</span></div>
-      <table class="data-table">
-        <thead><tr><th>媒体</th><th class="num">件数</th><th class="num">売上</th><th class="num">構成比</th></tr></thead>
-        <tbody>${mediaRows}</tbody>
-      </table>
-    </td>
-    <td style="width:50%;vertical-align:top;padding-left:18px;border-left:1px solid #e0d8c8;">
-      <div class="sec-head"><span class="sec-title">月次推移（直近6ヶ月）</span><span class="sec-sub">Monthly Trend</span></div>
-      <table class="data-table">
-        <thead><tr><th>月</th><th class="num">件数</th><th class="num">売上</th><th class="num">平均単価</th></tr></thead>
-        <tbody>${trendRows}</tbody>
-      </table>
-    </td>
-  </tr>
-</table>
+<div class="section">
+  <div class="sec-head"><span class="sec-title">媒体別</span><span class="sec-sub">By Media</span></div>
+  <table class="data-table">
+    <thead><tr><th>媒体</th><th class="num">件数</th><th class="num">売上</th><th class="num">構成比</th></tr></thead>
+    <tbody>${mediaRows}</tbody>
+  </table>
+</div>
 
-<div class="section" style="page-break-before:always;padding-top:32px;">
-  <div class="sec-head"><span class="sec-title">国籍別</span><span class="sec-sub">By Nationality — 上位${TOP_N}か国 + その他</span></div>
-  <table style="width:100%;border-collapse:collapse;">
+<div class="section" style="page-break-before:always;padding-top:40px;">
+  <div class="sec-head"><span class="sec-title">国籍別分析</span><span class="sec-sub">By Nationality — 上位${TOP_N}か国 + その他</span></div>
+  <table style="width:100%;border-collapse:collapse;margin-bottom:32px;">
     <tr>
-      <td style="width:220px;vertical-align:middle;text-align:center;padding-right:24px;">
-        <canvas id="natChart" width="200" height="200"></canvas>
+      <td style="width:280px;text-align:center;vertical-align:middle;padding-right:32px;">
+        <canvas id="natChart" width="260" height="260"></canvas>
       </td>
-      <td style="vertical-align:top;padding-left:8px;">
+      <td style="vertical-align:top;padding-left:16px;border-left:1px solid #e0d8c8;">
         <table class="data-table">
           <thead><tr><th>国籍</th><th class="num">件数</th><th class="num">構成比</th></tr></thead>
           <tbody>${natRows}</tbody>
         </table>
+        <div style="margin-top:20px;padding:14px 16px;background:#fdfaf4;border:1px solid #e0d0a0;border-left:4px solid ${GOLD};font-size:10pt;line-height:1.8;color:#2a1e08;">
+          <div style="font-size:8pt;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:${GOLD};margin-bottom:8px;">Nationality Insight</div>
+          ${topNat ? '最多国籍は' + topNat.name + 'で全体の' + Math.round(topNat.count/natTotal*100) + '%を占めています。' : ''}
+          ${displayNat.slice(0,3).map(r=>'').join('')}
+          アジア圏（台湾・韓国・中国・香港）で全体の${Math.round(displayNat.filter(r=>['台湾','韓国','中国','香港'].includes(r.name)).reduce((s,r)=>s+Number(r.count),0)/natTotal*100)}%を構成しています。
+        </div>
       </td>
     </tr>
   </table>
 </div>
 
-<div class="footer">
+<div class="footer" style="margin-top:0;">
   <table><tr>
     <td><span class="footer-brand">GREED</span> — 社外秘 Confidential</td>
     <td style="text-align:right">本レポートは ${today} に自動生成されました</td>
